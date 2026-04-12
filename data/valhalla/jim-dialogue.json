@@ -1,0 +1,131 @@
+{
+  "level1": {
+    "intro": [
+      { "speaker": "jim", "text": "Du tog dig god tid, Lars.", "mood": "amused" },
+      { "speaker": "jim", "text": "Jeg sad herude og ventede. Det var... fugtigt.", "mood": "dry" },
+      { "speaker": "jim", "text": "Men nu er du her. Og vejen venter.", "mood": "serious" },
+      { "speaker": "jim", "text": "Brug pilene. Hop med mellemrum. Og prøv ikke at dø for hurtigt.", "mood": "instructive" }
+    ],
+    "midLevel": [
+      { "speaker": "jim", "text": "Ikke den vej. Medmindre du vil dø.", "mood": "warning" },
+      { "speaker": "jim", "text": "Der er altid en skjult sti, Lars. Man skal bare lide nok for at finde den.", "mood": "cryptic" }
+    ],
+    "preBoss": [
+      { "speaker": "jim", "text": "Så. Ham den store med øksen.", "mood": "observing" },
+      { "speaker": "jim", "text": "Hvis du dør her, så dø i det mindste dramatisk.", "mood": "dry" },
+      { "speaker": "jim", "text": "Hop over hans angreb. Land på hans hoved. Sådan er det.", "mood": "instructive" }
+    ],
+    "postBoss": [
+      { "speaker": "jim", "text": "Ikke dårligt. For en begynder.", "mood": "impressed" },
+      { "speaker": "jim", "text": "Skoven venter forude. Den er... anderledes.", "mood": "ominous" },
+      { "speaker": "jim", "text": "Kom, Lars. Vi er langt fra færdige.", "mood": "serious" }
+    ],
+    "death": [
+      "Tragisk. Prøv igen, Lars.",
+      "Det var... ynkeligt. Men lærende, vil jeg håbe.",
+      "Selv mosen fortjener en bedre kriger end det der.",
+      "Odin vendte sig i graven. Og han er ikke engang død endnu."
+    ]
+  },
+  "level2": {
+    "intro": [
+      { "speaker": "jim", "text": "Skoven har stået her længere end nogen husker.", "mood": "reverent" },
+      { "speaker": "jim", "text": "Den kender dig ikke endnu. Men den ser dig.", "mood": "ominous" },
+      { "speaker": "jim", "text": "Lad være med at trampe, Lars. Selv træerne dømmer dig lige nu.", "mood": "dry" },
+      { "speaker": "jim", "text": "Der er stier herinde, som kun viser sig for dem der lider nok.", "mood": "cryptic" }
+    ],
+    "midLevel": [
+      { "speaker": "jim", "text": "Skoven kan lide dig, Lars. Det er næsten et dårligt tegn.", "mood": "amused" },
+      { "speaker": "jim", "text": "Se de røde tegn i barken. Nogen har været her før os. Nogen... ældre.", "mood": "ominous" }
+    ],
+    "preBoss": [
+      { "speaker": "jim", "text": "Kan du mærke det? Noget bevæger sig mellem stammerne.", "mood": "tense" },
+      { "speaker": "jim", "text": "Hjortemanden. Han har vogtet denne skov i århundreder.", "mood": "respectful" },
+      { "speaker": "jim", "text": "Han er hurtig, Lars. Hurtigere end dig. Men ikke klogere.", "mood": "strategic" }
+    ],
+    "postBoss": [
+      { "speaker": "jim", "text": "Skoven bøjer sig for dig. Det har den aldrig gjort for mig.", "mood": "impressed" },
+      { "speaker": "jim", "text": "Du ligner en mand der begynder at forstå, hvad han er lavet af.", "mood": "warm" },
+      { "speaker": "jim", "text": "Klipperne venter. Der lugter af salt og blod forude.", "mood": "ominous" }
+    ],
+    "death": [
+      "Skoven slukkede dig, Lars. Hvor pinligt.",
+      "Selv rødmosen overlever herinde. Du kunne ikke.",
+      "Træerne hvisker om din fiasko. Jeg hører dem.",
+      "Du faldt som et blad. Dog uden bladets elegance."
+    ]
+  },
+  "level3": {
+    "intro": [
+      { "speaker": "jim", "text": "Her døde mænd for ære, Lars. Meget upraktisk valuta.", "mood": "philosophical" },
+      { "speaker": "jim", "text": "Klipperne har drukket blod i århundreder. Man kan mærke det i luften.", "mood": "dark" },
+      { "speaker": "jim", "text": "Stormen vil prøve at blæse dig ned. Havet vil prøve at sluge dig.", "mood": "warning" },
+      { "speaker": "jim", "text": "Jeg siger ikke du kan klare det. Jeg siger bare, at det ville være pinligt hvis du ikke kunne.", "mood": "challenging" }
+    ],
+    "midLevel": [
+      { "speaker": "jim", "text": "Vinden her bærer historier. Kan du høre dem?", "mood": "reverent" },
+      { "speaker": "jim", "text": "Dem der faldt her, faldt med ansigtet mod fjenden. Det er mere end de fleste kan sige.", "mood": "respectful" }
+    ],
+    "preBoss": [
+      { "speaker": "jim", "text": "Ham der. Den Faldne Bersærk. Han er døet tre gange og rejst sig hver gang.", "mood": "ominous" },
+      { "speaker": "jim", "text": "Han bruger stormen som våben. Du skal bruge den som mulighed.", "mood": "strategic" },
+      { "speaker": "jim", "text": "Lars. Du er vokset. Det er næsten... irriterende.", "mood": "proud" }
+    ],
+    "postBoss": [
+      { "speaker": "jim", "text": "Klipperne bøjer sig. Havet tier stille. Det har jeg aldrig set før.", "mood": "awe" },
+      { "speaker": "jim", "text": "Du begynder at ligne noget mere end en mand, Lars.", "mood": "enigmatic" },
+      { "speaker": "jim", "text": "Foran os venter ilden. Og gudernes sprog.", "mood": "ominous" }
+    ],
+    "death": [
+      "Havet tog dig. Klassisk.",
+      "Stormen vandt. Du tabte. Prøv igen.",
+      "Klipperne spyttede dig ud. Hvor ydmygende.",
+      "Selv ravnene vender sig væk i skam."
+    ]
+  },
+  "level4": {
+    "intro": [
+      { "speaker": "jim", "text": "Kan du mærke det, Lars? Luften er tyk af gudernes vilje.", "mood": "reverent" },
+      { "speaker": "jim", "text": "Her taler man ikke. Her OFRER man.", "mood": "dark" },
+      { "speaker": "jim", "text": "Ilden kender ikke forskel på helten og offeret. Det er en god lektie.", "mood": "philosophical" },
+      { "speaker": "jim", "text": "Tænd bålskålene i den rigtige rækkefølge. Ellers brænder du.", "mood": "instructive" }
+    ],
+    "midLevel": [
+      { "speaker": "jim", "text": "Du er ikke offeret i dag, Lars. Tillykke.", "mood": "dry" },
+      { "speaker": "jim", "text": "Ritualer handler mest om timing. Det gør overlevelse egentlig også.", "mood": "wise" }
+    ],
+    "preBoss": [
+      { "speaker": "jim", "text": "Blótmoderen. Hun har ofret tusinder til guderne.", "mood": "reverent" },
+      { "speaker": "jim", "text": "Hun styrer ilden. Alt ilden rører, rører hun.", "mood": "warning" },
+      { "speaker": "jim", "text": "Spil spillet smukt, Lars. Guderne kigger med.", "mood": "theatrical" }
+    ],
+    "postBoss": [
+      { "speaker": "jim", "text": "Ilden bøjer sig for dig. Det er... uventet.", "mood": "impressed" },
+      { "speaker": "jim", "text": "Du har passeret gudernes prøve. Men der er én prøve tilbage.", "mood": "ominous" },
+      { "speaker": "jim", "text": "Overfarten venter. Den røde tåge. Og sandheden.", "mood": "enigmatic" }
+    ],
+    "death": [
+      "Ilden tog dig. Som den har taget så mange.",
+      "Du brændte. Det er i det mindste dramatisk.",
+      "Guderne er ligeglade, Lars. Prøv igen.",
+      "Aske til aske. Men du har flere chancer end de fleste."
+    ]
+  },
+  "level5": {
+    "intro": [
+      { "speaker": "jim", "text": "Du er tæt på nu, Lars. Det bliver værre. Og bedre.", "mood": "enigmatic" },
+      { "speaker": "jim", "text": "Det er sjovt, ikke? Når man ikke længere ved, om nogen viser vej eller leder én i fordærv.", "mood": "dangerous" }
+    ]
+  },
+  "level6": {
+    "intro": [
+      { "speaker": "jim", "text": "Se på dig, Lars. Du kom faktisk hele vejen.", "mood": "warm" },
+      { "speaker": "jim", "text": "Det er næsten irriterende flot.", "mood": "amused" }
+    ],
+    "reveal": [
+      { "speaker": "jim", "text": "Du kaldte mig Jim.", "mood": "quiet" },
+      { "speaker": "jim", "text": "Andre har kaldt mig andet.", "mood": "dangerous" },
+      { "speaker": "loke", "text": "Valhalla er et fantastisk sted. Især hvis man holder op med at spørge, om man må gå igen.", "mood": "divine" }
+    ]
+  }
+}

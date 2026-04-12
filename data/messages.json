@@ -1,0 +1,37 @@
+{
+  "correct": [
+    "Spot on! Du kender din Lars!",
+    "Korrekt! Lars ville være stolt.",
+    "BOOM! Det var let, hva?",
+    "Ja mand! Den sad lige i skabet!",
+    "Du har øje for Lars!",
+    "Perfekt! Tag en øl for det!",
+    "Stærkt! Lars applauderer!",
+    "SKÅL! Det var rigtigt!",
+    "Viking-øje! Intet slipper forbi dig!"
+  ],
+  "wrong": [
+    "Lars er skuffet over dig...",
+    "Selv Lars' børn kunne se det!",
+    "Tag en øl og prøv igen.",
+    "Den Lars havde du sgu godt nok ikke spottet.",
+    "Nej nej nej! Fokus!",
+    "Lars ryster på hovedet...",
+    "Var du fuld da du trykkede?",
+    "Det var ellers tydeligt!",
+    "Prøv at kig ordentligt næste gang!"
+  ],
+  "scoreComments": {
+    "0": "Lars kender dig ikke...",
+    "300": "Du har set Lars i Netto, måske.",
+    "600": "Du og Lars deler måske en øl en dag.",
+    "900": "Lars vil gerne have dit nummer!",
+    "1200": "DU ER LARS! (Næsten)"
+  },
+  "streakMessages": {
+    "3": "Tre i træk! Du varmer op!",
+    "5": "FEM! Lars er imponeret!",
+    "7": "SYYYV! Du er en Lars-maskine!",
+    "10": "LARS MASTER! Legendarisk!"
+  }
+}

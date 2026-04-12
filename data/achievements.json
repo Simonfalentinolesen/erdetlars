@@ -1,0 +1,74 @@
+{
+  "achievements": [
+    {
+      "id": "viking_spotter",
+      "name": "Viking Spotter",
+      "description": "10 korrekte i træk",
+      "icon": "mdi:shield-sword",
+      "condition": { "type": "streak", "value": 10 }
+    },
+    {
+      "id": "porsche_patrol",
+      "name": "Porsche Patrol",
+      "description": "Gennemfør en runde på under 30 sekunder",
+      "icon": "mdi:car-sports",
+      "condition": { "type": "speed_round", "value": 30000 }
+    },
+    {
+      "id": "oelkongen",
+      "name": "Ølkongen",
+      "description": "Spil 5 runder",
+      "icon": "mdi:beer",
+      "condition": { "type": "total_rounds", "value": 5 }
+    },
+    {
+      "id": "techno_viking",
+      "name": "Techno Viking",
+      "description": "50 korrekte svar i alt",
+      "icon": "mdi:music-note",
+      "condition": { "type": "total_correct", "value": 50 }
+    },
+    {
+      "id": "lars_best_friend",
+      "name": "Lars' Bedste Ven",
+      "description": "100 korrekte svar i alt",
+      "icon": "mdi:heart",
+      "condition": { "type": "total_correct", "value": 100 }
+    },
+    {
+      "id": "always_lars",
+      "name": "Det ER Altid Lars",
+      "description": "Svar 'Lars' på alle 10 i en runde",
+      "icon": "mdi:emoticon-excited",
+      "condition": { "type": "all_lars", "value": 10 }
+    },
+    {
+      "id": "never_lars",
+      "name": "Det er ALDRIG Lars",
+      "description": "Svar 'Ikke Lars' på alle 10 i en runde",
+      "icon": "mdi:emoticon-confused",
+      "condition": { "type": "all_not_lars", "value": 10 }
+    },
+    {
+      "id": "speed_demon",
+      "name": "Speed Demon",
+      "description": "Perfekt runde under 15 sekunder",
+      "icon": "mdi:lightning-bolt",
+      "condition": { "type": "perfect_speed", "value": 15000 }
+    },
+    {
+      "id": "falsk_lars",
+      "name": "Falsk Lars",
+      "description": "Bliv snydt 5 gange af look-alikes",
+      "icon": "mdi:drama-masks",
+      "condition": { "type": "fooled", "value": 5 }
+    },
+    {
+      "id": "dedicated_fan",
+      "name": "Dedicated Fan",
+      "description": "Spil 3 dage i træk",
+      "icon": "mdi:calendar-check",
+      "condition": { "type": "daily_streak", "value": 3 }
+    }
+  ]
+}

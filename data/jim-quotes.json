@@ -1,0 +1,105 @@
+{
+  "gameplay": [
+    "Lars, Lars, Lars... Selv en blind viking kunne se det!",
+    "En ægte viking drikker mjød, ikke Tuborg, Lars.",
+    "Lars, selv Odin ville ryste på hovedet over det svar.",
+    "Havde du drukket mjød? Det svar var jo helt forkert!",
+    "Lars ville skamme sig over dig. Og det siger JEG.",
+    "Du svarer som en træl, ikke en kriger!",
+    "Min kat kunne gætte bedre. Og den er død.",
+    "Acceptabelt. For en ikke-viking.",
+    "Hmm... Du har potentiale. Til at skuffe mig."
+  ],
+  "correct": [
+    "Godt spottet! Måske er du LIDT viking alligevel.",
+    "Selv jeg er imponeret. Og det sker sjældent.",
+    "Du har øjne som en falk! ...eller en fuld Lars.",
+    "Korrekt! Tag en mjød - du har fortjent det.",
+    "Hmm, ikke dårligt. For en amatør.",
+    "Du begynder at ligne en Lars-ekspert!",
+    "Odin ville nikke anerkendende. Måske.",
+    "Det var rigtigt! Lars skylder dig en øl.",
+    "Jeg er... næsten stolt. NÆSTEN.",
+    "Stærkt! Du har viking-instinkt!",
+    "Ja! Sådan! Mere af det!",
+    "Lars ville klappe dig på skulderen for den.",
+    "Acceptabelt. Jeg hæver min pegefinger i respekt.",
+    "Den sad! Godt gættet, kriger!",
+    "Du kunne næsten være min lærling.",
+    "Spot on! Lars' skæg ville vibrere af glæde.",
+    "Korrekt! Du fortjener en dåse-øl for den."
+  ],
+  "wrong": [
+    "Ynkeligt. Lars er skuffet. JEG er skuffet.",
+    "Det svar var værre end Lars' Porsche.",
+    "Selv Lars' børn ville klare det bedre.",
+    "Du skal til Valhalla... for at lære at gætte.",
+    "Forkert! Min dalmatiner gætter bedre.",
+    "Lars ryster på hovedet. Og det gør jeg også.",
+    "Var dine øjne lukkede?!",
+    "Det var... pinligt. For os begge.",
+    "Havde du drukket af Lars' øl?",
+    "FORKERT! Tag dig sammen, kriger!",
+    "Odin vender sig i graven.",
+    "Det svar var mere rustet end Lars' Porsche.",
+    "Selv en blind viking kunne se forskellen!",
+    "Nej nej nej. Prøv igen. Med åbne øjne.",
+    "Lars fortjener bedre fans end dig.",
+    "Min pegefinger er MEGET skuffet lige nu.",
+    "Det var jo helt galt. Skam dig."
+  ],
+  "results": {
+    "low": [
+      "Tragisk. Du er den værste Lars-spotter i vikingehistorien.",
+      "Lars kender dig ikke. Og det gør jeg heller ikke. Længere.",
+      "Jeg har set trælle performe bedre. Seriøst."
+    ],
+    "medium": [
+      "Ikke dårligt... for en der IKKE er viking.",
+      "Du er halvvejs til at være en acceptabel Lars-kender.",
+      "Hmm. Du får en C+. I vikingeskala er det... middelmådigt."
+    ],
+    "high": [
+      "Imponerende! Du har næsten fortjent et horn mjød!",
+      "Lars ville invitere dig med til techno for den score!",
+      "Du er tæt på vikinge-niveau. TÆT PÅ."
+    ],
+    "perfect": [
+      "UTROLIGT! Selv jeg bøjer mig! ...lidt.",
+      "Perfekt score? Du MÅ være Lars i forklædning!",
+      "Odin smiler ned til dig! Og det gør Lars også!"
+    ]
+  },
+  "idle": [
+    "Vidste du at Lars engang prøvede at bygge et vikingeskib? Det sank i havnen.",
+    "Lars mener hans Porsche er en 'moderne stridsvogn'. Den kan ikke engang starte om vinteren.",
+    "Jeg har tilbudt Lars en vikingehelm. Han sagde 'den passer ikke med min beanie'.",
+    "Lars påstår han er arkeolog. Men han graver mest efter øl i køleskabet.",
+    "Fun fact: Lars prøvede engang at lave mjød. Det smagte af vaskemiddel.",
+    "Lars' tatovør siger han er den mest tålmodige kunde. 47 timer for et vikingeskib på ryggen.",
+    "Jeg inviterede Lars til en vikingerekonstruktion. Han mødte op i Porsche.",
+    "Lars' kone ringede mig engang og spurgte om jeg kunne 'fikse ham'. Jeg sagde det var umuligt."
+  ],
+  "minigame": {
+    "porsche_dash": [
+      "Den Porsche er en SKAM for vikinge-æstetikken, Lars!",
+      "Kør hurtigere! Nej vent - den kan IKKE køre hurtigere.",
+      "En viking ville ALDRIG køre i den rustvogn!",
+      "Saml de øl op! Det er det eneste den bil er god til!",
+      "VIKINGERNE KOMMER! ...og de er hurtigere end din Porsche."
+    ],
+    "fuld_lars": [
+      "LARS! Stop med at drikke og flyv ordentligt!",
+      "Du flyver som en fuld due, Lars!",
+      "Selv Huginn og Muninn flyver bedre end dig!",
+      "En ægte viking falder ALDRIG! ...okay, måske lidt."
+    ],
+    "viking_lars": [
+      "NU ligner du en viking! Næsten!",
+      "Brug den vikingestyrke, Lars!",
+      "REGNBUE-LARS! Min favorit-Lars!",
+      "Saml den skat op! Du ER jo arkeolog!",
+      "Jim-power AKTIVERET! Du er velkommen, Lars."
+    ]
+  }
+}
