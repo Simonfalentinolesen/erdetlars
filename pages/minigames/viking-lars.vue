@@ -58,7 +58,20 @@ const RUN_SPEED = 270
 // World-to-screen zoom factor. Applied in render() after camera translate.
 // Everything inside the camera-transform block is scaled by this.
 // HUD, parallax backgrounds, and post-processing stay in screen space.
-const WORLD_ZOOM = 1.6
+//
+// Per-level overrides (Level 5 = Pong, needs full scene visible).
+// Levels 1-4 and 6 get an aggressive close-up so Lars fills the frame.
+const WORLD_ZOOM_BY_LEVEL: Record<number, number> = {
+  1: 2.4,
+  2: 2.4,
+  3: 2.4,
+  4: 2.4,
+  5: 1.0,   // Pong — needs full width, no zoom
+  6: 2.2,   // Valhalla feast — slightly less to see more NPCs at once
+}
+function getWorldZoom(): number {
+  return WORLD_ZOOM_BY_LEVEL[currentLevel.value] ?? 2.4
+}
 
 let px = 60, py = 0, pvx = 0, pvy = 0
 let onGround = false, facing = 1, invTimer = 0
@@ -1523,8 +1536,9 @@ function update(dt: number) {
 
   // Camera follows Lars, accounting for WORLD_ZOOM.
   // viewW/viewH are the visible world dimensions after zoom.
-  const viewW = W / WORLD_ZOOM
-  const viewH = H / WORLD_ZOOM
+  const zoom = getWorldZoom()
+  const viewW = W / zoom
+  const viewH = H / zoom
   const targetCamX = px - viewW * 0.4
   cameraX = Math.max(0, Math.min(targetCamX, levelWidth - viewW))
   const targetCamY = py - viewH * 0.55
@@ -2055,8 +2069,9 @@ function render() {
   const sx = shakeAmt > 0 ? (Math.random() - 0.5) * shakeAmt : 0
   const sy = shakeAmt > 0 ? (Math.random() - 0.5) * shakeAmt : 0
   c.translate(sx, sy)
-  c.translate(-cameraX * WORLD_ZOOM, -cameraY * WORLD_ZOOM)
-  c.scale(WORLD_ZOOM, WORLD_ZOOM)
+  const renderZoom = getWorldZoom()
+  c.translate(-cameraX * renderZoom, -cameraY * renderZoom)
+  c.scale(renderZoom, renderZoom)
 
   // === LEVEL 2 LIGHT SHAFTS (before platforms) ===
   if (currentLevel.value === 2) {

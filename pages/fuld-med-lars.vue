@@ -69,28 +69,95 @@ const multiplier = computed(() => {
   return 3
 })
 
-// Visual distortion based on promille
-const distortionStyle = computed(() => {
-  const p = promille.value
-  if (p < 0.3) return {}
+// Blur modes — rotates per card so each new image has a different visual distortion
+type BlurMode = 'heavy' | 'double' | 'motion' | 'tunnel' | 'chromatic'
+const BLUR_MODES: BlurMode[] = ['heavy', 'double', 'motion', 'tunnel', 'chromatic']
+const blurMode = ref<BlurMode>('heavy')
 
-  const wobble = p * 3  // degrees
-  const blur = p * 0.4  // px
-  const saturate = 1 + p * 0.3
-  const hue = Math.sin(Date.now() * 0.001) * p * 15
+function pickRandomBlurMode() {
+  // Don't repeat the same mode twice in a row
+  const options = BLUR_MODES.filter(m => m !== blurMode.value)
+  blurMode.value = options[Math.floor(Math.random() * options.length)]!
+}
 
-  return {
-    filter: `blur(${blur}px) saturate(${saturate}) hue-rotate(${hue}deg)`,
-    transform: `rotate(${Math.sin(Date.now() * 0.003) * wobble}deg)`,
-  }
-})
-
-// Animation loop for visual wobble when drunk
+// Animation loop for visual wobble when drunk (drives the reactive tick)
 let wobbleFrame: number | null = null
 const wobbleTick = ref(0)
 function wobbleLoop() {
   wobbleTick.value++
   wobbleFrame = requestAnimationFrame(wobbleLoop)
+}
+
+// Visual distortion based on promille — much heavier than before, with 5 rotating modes
+const distortionStyle = computed(() => {
+  // Read tick to force per-frame reactivity
+  const tick = wobbleTick.value
+  const p = promille.value
+  if (p < 0.3) return {}
+
+  const t = tick * 0.016 // approx seconds
+  // Organic pulsing of the blur (breathing)
+  const pulse = 1 + Math.sin(t * 1.8) * 0.18
+  // Base intensity scales hard with promille
+  const baseBlur = p * p * 1.2 * pulse        // at p=1: 1.4px, p=2: 5.6px, p=3: 12.6px
+  const wobble = p * 4.5                       // degrees, way more than before
+  const saturate = 1 + p * 0.45
+  const hue = Math.sin(t * 0.7) * p * 22
+  const rot = Math.sin(t * 2.2) * wobble
+  const skewY = Math.sin(t * 1.4) * p * 0.8
+  const drift = p * 2                          // position drift
+
+  let filter = ''
+
+  switch (blurMode.value) {
+    case 'heavy':
+      // Pure heavy gaussian — the classic drunk blur
+      filter = `blur(${baseBlur}px) saturate(${saturate}) hue-rotate(${hue}deg) brightness(${1 + p * 0.08}) contrast(${1 + p * 0.12})`
+      break
+
+    case 'double':
+      // Double vision — two offset ghost copies via drop-shadow
+      {
+        const ghostOffset = p * 5
+        filter = `blur(${baseBlur * 0.55}px) saturate(${saturate}) ` +
+          `drop-shadow(${ghostOffset}px 0 0 rgba(255, 100, 200, 0.55)) ` +
+          `drop-shadow(${-ghostOffset}px ${ghostOffset * 0.3}px 0 rgba(100, 200, 255, 0.55))`
+      }
+      break
+
+    case 'motion':
+      // Motion blur — smearing + stronger hue wobble
+      filter = `blur(${baseBlur * 0.9}px) saturate(${saturate * 1.1}) hue-rotate(${hue * 2.5}deg) contrast(${1 + p * 0.3})`
+      break
+
+    case 'tunnel':
+      // Tunnel vision — heavy blur + dark + high contrast
+      filter = `blur(${baseBlur * 1.4}px) saturate(${saturate * 0.65}) brightness(${1 - p * 0.18}) contrast(${1 + p * 0.35})`
+      break
+
+    case 'chromatic':
+      // Chromatic aberration — RGB channels split
+      {
+        const split = p * 3.5
+        filter = `blur(${baseBlur * 0.5}px) saturate(${saturate * 1.3}) ` +
+          `drop-shadow(${split}px 0 0 rgba(255, 40, 120, 0.6)) ` +
+          `drop-shadow(${-split}px 0 0 rgba(40, 220, 255, 0.6)) ` +
+          `drop-shadow(0 ${split * 0.4}px 0 rgba(255, 200, 40, 0.4))`
+      }
+      break
+  }
+
+  return {
+    filter,
+    transform: `rotate(${rot}deg) skewY(${skewY}deg) translate(${Math.sin(t * 1.1) * drift}px, ${Math.cos(t * 0.8) * drift * 0.6}px)`,
+  }
+})
+
+// Blink — triggers between cards when drunk enough, simulating eyelids
+const showBlink = ref(false)
+function triggerBlink() {
+  showBlink.value = true
+  setTimeout(() => { showBlink.value = false }, 450)
 }
 
 // Promille tick
@@ -251,6 +318,12 @@ function advance() {
     queue.value = shuffle(imageData.images as GameImage[])
     queueIndex.value = 0
   }
+  // Pick a new blur-mode for the next card
+  pickRandomBlurMode()
+  // Blink at promille >= 0.8 (eyelids getting heavy)
+  if (promille.value >= 0.8) {
+    triggerBlink()
+  }
   isProcessing.value = false
 }
 
@@ -313,7 +386,10 @@ function goHome() {
       @pointerleave="onPointerUp"
     >
       <!-- Drunk wobble wrapper -->
-      <div :style="distortionStyle" class="transition-all duration-200">
+      <div
+        :style="distortionStyle"
+        :class="['drunk-wrap', `drunk-mode-${blurMode}`]"
+      >
         <SwipeCard
           v-if="currentImage"
           ref="swipeCardRef"
@@ -376,6 +452,15 @@ function goHome() {
     <!-- Jim pranks + toasts -->
     <AchievementToast />
 
+    <!-- Blink overlay — eyelids closing when drunk -->
+    <div
+      v-if="showBlink"
+      class="fixed inset-0 z-[60] pointer-events-none blink-container"
+    >
+      <div class="blink-lid blink-lid-top" />
+      <div class="blink-lid blink-lid-bottom" />
+    </div>
+
     <!-- Minigame teaser -->
     <MinigameTeaser
       :promo="teaserPromo"
@@ -401,4 +486,62 @@ function goHome() {
 .fade-leave-active { transition: opacity 0.4s ease; }
 .fade-enter-from,
 .fade-leave-to { opacity: 0; }
+
+/* Drunk wrapper — per-frame filter updates, no CSS transitions */
+.drunk-wrap {
+  will-change: filter, transform;
+  /* No transitions — the per-frame updates drive the animation */
+}
+/* GPU-accelerated — keeps it smooth */
+.drunk-wrap > * {
+  backface-visibility: hidden;
+}
+
+/* Blink eyelid overlay — simulates blinking when drunk */
+.blink-container {
+  /* Two black bars closing from top and bottom */
+}
+
+.blink-lid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to var(--to, bottom),
+    #000 0%,
+    #000 60%,
+    rgba(20, 10, 15, 0.9) 85%,
+    rgba(20, 10, 15, 0) 100%);
+}
+
+.blink-lid-top {
+  top: 0;
+  height: 50vh;
+  --to: bottom;
+  transform: translateY(-100%);
+  animation: eyelid-top 0.45s cubic-bezier(0.42, 0, 0.32, 1) forwards;
+}
+
+.blink-lid-bottom {
+  bottom: 0;
+  height: 50vh;
+  --to: top;
+  transform: translateY(100%);
+  animation: eyelid-bottom 0.45s cubic-bezier(0.42, 0, 0.32, 1) forwards;
+}
+
+@keyframes eyelid-top {
+  0%   { transform: translateY(-100%); }
+  38%  { transform: translateY(-8%); }     /* eyes mostly closed */
+  50%  { transform: translateY(2%); }      /* fully shut — slight overlap */
+  62%  { transform: translateY(-8%); }     /* starting to open */
+  100% { transform: translateY(-100%); }   /* back open */
+}
+
+@keyframes eyelid-bottom {
+  0%   { transform: translateY(100%); }
+  38%  { transform: translateY(8%); }
+  50%  { transform: translateY(-2%); }
+  62%  { transform: translateY(8%); }
+  100% { transform: translateY(100%); }
+}
 </style>

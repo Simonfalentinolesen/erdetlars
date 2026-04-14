@@ -216,14 +216,16 @@ async function processAnswer(guessedLars: boolean) {
     state.value.score = Math.max(0, state.value.score + (finalPoints - result.points))
   }
 
-  // Shield: if wrong, restore streak
+  // Determine what Jim says this round — priority: shield > streak milestone > regular quote
+  let jimSays = wasCorrect ? getCorrectQuote() : getWrongQuote()
+
+  // Shield: if wrong, restore streak + override quote
   if (!wasCorrect) {
     const shielded = consumeShield()
     if (shielded) {
       // The answer() call already reset streak to 0. Revert:
       state.value.streak = state.value.bestStreak > 0 ? Math.max(state.value.bestStreak, 1) : 1
-      // More accurate: remember pre-answer streak. For simplicity, use bestStreak.
-      jimToastQuote.value = 'Shield reddede dig! Streak bevaret.'
+      jimSays = 'Shield reddede dig! Streak bevaret.'
     }
   }
 
@@ -241,16 +243,22 @@ async function processAnswer(guessedLars: boolean) {
     resetStreakTimer()
   }
 
+  // Streak milestone message overrides regular quote on correct
+  const streakMsg = getStreakMessage()
+  if (wasCorrect && streakMsg) {
+    jimSays = streakMsg
+  }
+
   feedbackCorrect.value = wasCorrect
   feedbackPoints.value = finalPoints
   feedbackSpeedBonus.value = result.speedBonus
-  feedbackMessage.value = wasCorrect ? getCorrectQuote() : getWrongQuote()
+  feedbackMessage.value = jimSays
   showFeedback.value = true
 
-  // Don't override shield message
-  if (!jimToastQuote.value || jimToastQuote.value === feedbackMessage.value) {
-    jimToastQuote.value = feedbackMessage.value
-  }
+  // Toggle toast off → on so the Transition fires on identical consecutive quotes too
+  showJimToast.value = false
+  await nextTick()
+  jimToastQuote.value = jimSays
   showJimToast.value = true
 
   // Sound + confetti
@@ -274,9 +282,6 @@ async function processAnswer(guessedLars: boolean) {
   } else {
     playWrong()
   }
-
-  const streakMsg = getStreakMessage()
-  if (streakMsg) feedbackMessage.value = streakMsg
 
   localAnswerCount.value++
 
