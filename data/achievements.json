@@ -1,31 +1,30 @@
 {
   "achievements": [
     {
+      "id": "first_blood",
+      "name": "Første Lars",
+      "description": "Gæt din første Lars rigtigt",
+      "icon": "mdi:baby-face",
+      "tier": "bronze",
+      "reward": { "type": "powerup", "value": "hint" },
+      "condition": { "type": "total_correct", "value": 1 }
+    },
+    {
       "id": "viking_spotter",
       "name": "Viking Spotter",
       "description": "10 korrekte i træk",
       "icon": "mdi:shield-sword",
+      "tier": "silver",
+      "reward": { "type": "powerup", "value": "shield" },
       "condition": { "type": "streak", "value": 10 }
-    },
-    {
-      "id": "porsche_patrol",
-      "name": "Porsche Patrol",
-      "description": "Gennemfør en runde på under 30 sekunder",
-      "icon": "mdi:car-sports",
-      "condition": { "type": "speed_round", "value": 30000 }
-    },
-    {
-      "id": "oelkongen",
-      "name": "Ølkongen",
-      "description": "Spil 5 runder",
-      "icon": "mdi:beer",
-      "condition": { "type": "total_rounds", "value": 5 }
     },
     {
       "id": "techno_viking",
       "name": "Techno Viking",
       "description": "50 korrekte svar i alt",
       "icon": "mdi:music-note",
+      "tier": "bronze",
+      "reward": { "type": "powerup", "value": "hint" },
       "condition": { "type": "total_correct", "value": 50 }
     },
     {
@@ -33,42 +32,136 @@
       "name": "Lars' Bedste Ven",
       "description": "100 korrekte svar i alt",
       "icon": "mdi:heart",
+      "tier": "silver",
+      "reward": { "type": "powerup", "value": "double" },
       "condition": { "type": "total_correct", "value": 100 }
     },
     {
-      "id": "always_lars",
-      "name": "Det ER Altid Lars",
-      "description": "Svar 'Lars' på alle 10 i en runde",
-      "icon": "mdi:emoticon-excited",
-      "condition": { "type": "all_lars", "value": 10 }
+      "id": "lars_kender",
+      "name": "Lars-Kender",
+      "description": "500 korrekte svar i alt",
+      "icon": "mdi:star-four-points",
+      "tier": "gold",
+      "reward": { "type": "powerup", "value": "double" },
+      "condition": { "type": "total_correct", "value": 500 }
     },
     {
-      "id": "never_lars",
-      "name": "Det er ALDRIG Lars",
-      "description": "Svar 'Ikke Lars' på alle 10 i en runde",
-      "icon": "mdi:emoticon-confused",
-      "condition": { "type": "all_not_lars", "value": 10 }
+      "id": "lars_mester",
+      "name": "Lars-Mester",
+      "description": "1000 korrekte svar i alt",
+      "icon": "mdi:crown",
+      "tier": "legendary",
+      "reward": { "type": "powerup", "value": "all" },
+      "condition": { "type": "total_correct", "value": 1000 }
+    },
+    {
+      "id": "perfektionist",
+      "name": "Perfektionisten",
+      "description": "25 korrekte i træk uden fejl",
+      "icon": "mdi:fire",
+      "tier": "gold",
+      "reward": { "type": "powerup", "value": "shield" },
+      "condition": { "type": "streak", "value": 25 }
+    },
+    {
+      "id": "oelkongen",
+      "name": "Ølkongen",
+      "description": "Spil 5 runder",
+      "icon": "mdi:beer",
+      "tier": "bronze",
+      "reward": { "type": "powerup", "value": "skip" },
+      "condition": { "type": "total_rounds", "value": 5 }
     },
     {
       "id": "speed_demon",
       "name": "Speed Demon",
-      "description": "Perfekt runde under 15 sekunder",
+      "description": "10 rigtige på under 15 sekunder",
       "icon": "mdi:lightning-bolt",
-      "condition": { "type": "perfect_speed", "value": 15000 }
+      "tier": "silver",
+      "reward": { "type": "powerup", "value": "double" },
+      "condition": { "type": "speed_correct", "value": 15000 }
     },
     {
-      "id": "falsk_lars",
-      "name": "Falsk Lars",
-      "description": "Bliv snydt 5 gange af look-alikes",
+      "id": "night_owl",
+      "name": "Nataglen",
+      "description": "Spil mellem 02:00 og 05:00 (Lars' timer)",
+      "icon": "mdi:owl",
+      "tier": "silver",
+      "hidden": true,
+      "reward": { "type": "powerup", "value": "double" },
+      "condition": { "type": "night_play", "value": 1 }
+    },
+    {
+      "id": "dalmatian_survivor",
+      "name": "Dalmatiner-Overlever",
+      "description": "Overlev 10 af Jim's pranks",
+      "icon": "mdi:dog",
+      "tier": "silver",
+      "reward": { "type": "powerup", "value": "shield" },
+      "condition": { "type": "pranks_survived", "value": 10 }
+    },
+    {
+      "id": "collector",
+      "name": "Samler",
+      "description": "Lås 25 kort op i din Samling",
+      "icon": "mdi:cards",
+      "tier": "silver",
+      "reward": { "type": "powerup", "value": "hint" },
+      "condition": { "type": "collection_count", "value": 25 }
+    },
+    {
+      "id": "completionist",
+      "name": "Pokédex-Mesteren",
+      "description": "Lås ALLE kort op i din Samling",
+      "icon": "mdi:book-open-variant",
+      "tier": "legendary",
+      "reward": { "type": "powerup", "value": "all" },
+      "condition": { "type": "collection_complete", "value": 1 }
+    },
+    {
+      "id": "mythical_hunter",
+      "name": "Mytisk Jæger",
+      "description": "Fang begge mytiske Lars-kort",
+      "icon": "mdi:diamond-stone",
+      "tier": "gold",
+      "reward": { "type": "powerup", "value": "double" },
+      "condition": { "type": "mythical_count", "value": 2 }
+    },
+    {
+      "id": "power_virtuoso",
+      "name": "Power-up Virtuos",
+      "description": "Brug alle 4 power-up typer",
+      "icon": "mdi:flash",
+      "tier": "gold",
+      "reward": { "type": "powerup", "value": "all" },
+      "condition": { "type": "powerups_used_all", "value": 1 }
+    },
+    {
+      "id": "drunken_lars",
+      "name": "Fuld som Lars",
+      "description": "Nå max beruselse i Fuld-med-Lars mode",
+      "icon": "mdi:glass-mug-variant",
+      "tier": "gold",
+      "reward": { "type": "powerup", "value": "skip" },
+      "condition": { "type": "drunk_max", "value": 1 }
+    },
+    {
+      "id": "jim_student",
+      "name": "Jim's Lærling",
+      "description": "Læs 50 Jim-facts",
+      "icon": "mdi:school",
+      "tier": "silver",
+      "reward": { "type": "powerup", "value": "hint" },
+      "condition": { "type": "facts_read", "value": 50 }
+    },
+    {
+      "id": "fooled_again",
+      "name": "Jim-Snydt",
+      "description": "Bliv snydt 5 gange af lookalikes",
       "icon": "mdi:drama-masks",
+      "tier": "bronze",
+      "reward": { "type": "powerup", "value": "hint" },
       "condition": { "type": "fooled", "value": 5 }
-    },
-    {
-      "id": "dedicated_fan",
-      "name": "Dedicated Fan",
-      "description": "Spil 3 dage i træk",
-      "icon": "mdi:calendar-check",
-      "condition": { "type": "daily_streak", "value": 3 }
     }
   ]
 }

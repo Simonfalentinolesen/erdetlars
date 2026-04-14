@@ -13,6 +13,8 @@ const emit = defineEmits<{
 
 const cardRef = ref<HTMLElement | null>(null)
 const videoRef = ref<HTMLVideoElement | null>(null)
+const imageLoaded = ref(false)
+const imageError = ref(false)
 
 const { swipeState, getCardStyle, triggerSwipe } = useSwipe(
   cardRef,
@@ -27,6 +29,12 @@ const isVideo = computed(() => {
   if (props.image.type === 'video') return true
   const ext = props.image.file.split('.').pop()?.toLowerCase()
   return ['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')
+})
+
+// Reset load state when image changes
+watch(() => props.image.file, () => {
+  imageLoaded.value = false
+  imageError.value = false
 })
 
 // Auto-play video when card becomes active
@@ -80,37 +88,58 @@ const borderColor = computed(() => {
     :class="{ 'pointer-events-none': !isActive || swipeState.flyingOut }"
   >
     <!-- Media container - shows full image with padding -->
-    <div class="w-full h-full bg-surface overflow-hidden flex items-center justify-center">
+    <div class="w-full h-full bg-surface overflow-hidden flex items-center justify-center relative">
+      <!-- Loading state (dim skeleton) -->
+      <div
+        v-if="!imageLoaded && !imageError && !isVideo"
+        class="absolute inset-0 bg-gradient-to-br from-surface via-surface/60 to-surface animate-pulse"
+      />
+
+      <!-- Error fallback -->
+      <div
+        v-if="imageError"
+        class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted p-6 text-center"
+      >
+        <Icon name="mdi:image-broken-variant" size="40" class="text-muted/50" />
+        <p class="text-xs font-mono opacity-60">Billede kunne ikke indlæses</p>
+      </div>
+
       <!-- Video -->
       <video
         v-if="isVideo"
         ref="videoRef"
         :src="image.file"
+        :poster="image.file.replace(/\.[^.]+$/, '.jpg')"
         class="w-full h-full object-contain"
         muted
         loop
         playsinline
         autoplay
-        :poster="image.file.replace(/\.[^.]+$/, '.jpg')"
+        preload="auto"
         draggable="false"
+        @loadeddata="imageLoaded = true"
+        @error="imageError = true"
       />
+
+      <!-- Video indicator badge -->
+      <div
+        v-if="isVideo"
+        class="absolute top-3 left-3 glass rounded-full px-2 py-1 flex items-center gap-1 pointer-events-none z-10"
+      >
+        <Icon name="mdi:play-circle" size="14" class="text-white/80" />
+        <span class="text-white/80 text-[10px] font-mono">VIDEO</span>
+      </div>
       <!-- Image -->
       <img
         v-else
         :src="image.file"
         :alt="image.isLars ? 'Lars?' : 'Person'"
         class="w-full h-full object-contain"
+        :class="{ 'opacity-0': !imageLoaded }"
         draggable="false"
+        @load="imageLoaded = true"
+        @error="imageError = true"
       >
-    </div>
-
-    <!-- Video indicator -->
-    <div
-      v-if="isVideo"
-      class="absolute top-3 left-3 glass rounded-full px-2 py-1 flex items-center gap-1 pointer-events-none"
-    >
-      <Icon name="mdi:play-circle" size="14" class="text-white/70" />
-      <span class="text-white/70 text-[10px] font-mono">VIDEO</span>
     </div>
 
     <!-- Gradient overlay at bottom -->

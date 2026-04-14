@@ -1,11 +1,35 @@
 <script setup lang="ts">
 import confetti from 'canvas-confetti'
+import type { MinigameId } from '~/composables/useMinigamePromo'
 
 const router = useRouter()
 const { state, startGame, getScoreComment } = useGame()
 const { getResultQuote } = useJim()
+const { pickById, pickRandom } = useMinigamePromo()
 
 const jimResultQuote = ref('')
+
+// Pick a featured minigame based on performance
+function pickFeaturedMinigame() {
+  const r = state.value.lastResult
+  if (!r) return pickRandom()
+  // Score brackets map to specific minigames with a teaser rationale
+  let id: MinigameId
+  let rationale: string
+  if (r.isPerfect || r.score >= 800) {
+    id = 'viking-lars'
+    rationale = 'Du er klar til Valhalla.'
+  } else if (r.score >= 400) {
+    id = 'porsche-dash'
+    rationale = 'Fortjent joyride, Lars.'
+  } else {
+    id = 'fuld-lars'
+    rationale = 'Start simpelt: flap først, tænk senere.'
+  }
+  const promo = pickById(id) ?? pickRandom()
+  return { promo, rationale }
+}
+const featured = ref<ReturnType<typeof pickFeaturedMinigame> | null>(null)
 
 // Redirect if no result data
 if (!state.value.lastResult) {
@@ -40,6 +64,7 @@ onMounted(() => {
   }
 
   jimResultQuote.value = getResultQuote(result.score, result.isPerfect)
+  featured.value = pickFeaturedMinigame()
 
   setTimeout(() => {
     isAnimating.value = true
@@ -104,7 +129,7 @@ async function shareResult() {
 </script>
 
 <template>
-  <div v-if="result" class="h-screen flex flex-col items-center justify-center px-6 relative overflow-hidden">
+  <div v-if="result" class="min-h-screen flex flex-col items-center justify-center px-6 py-10 relative">
     <!-- Home button -->
     <NuxtLink
       to="/"
@@ -206,14 +231,6 @@ async function shareResult() {
         Del resultat
       </button>
 
-      <NuxtLink
-        to="/minigames"
-        class="w-full py-3 rounded-xl glass text-center text-accent font-heading font-semibold text-sm hover:bg-accent/10 transition-colors flex items-center justify-center gap-2"
-      >
-        <Icon name="mdi:gamepad-variant" size="18" />
-        Prøv et minispil!
-      </NuxtLink>
-
       <div class="flex gap-3">
         <NuxtLink
           to="/leaderboard"
@@ -229,6 +246,79 @@ async function shareResult() {
         </NuxtLink>
       </div>
     </div>
+
+    <!-- Featured minigame — picked based on score -->
+    <div
+      v-if="featured"
+      class="w-full max-w-sm mt-8 transition-all duration-700 delay-700"
+      :class="showDetails ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'"
+    >
+      <div class="flex items-center gap-2 mb-2.5 px-1">
+        <Icon name="mdi:bullhorn-variant" size="12" class="text-muted" />
+        <span class="text-muted text-[9px] font-heading font-bold tracking-widest uppercase">
+          Jim anbefaler
+        </span>
+        <div class="flex-1 h-px bg-white/5" />
+        <span class="text-muted/60 text-[9px] font-mono italic">{{ featured.rationale }}</span>
+      </div>
+
+      <NuxtLink
+        :to="featured.promo.path"
+        class="block rounded-2xl p-4 relative overflow-hidden transition-all hover:scale-[1.02] featured-card"
+        :style="{
+          background: `linear-gradient(135deg, ${featured.promo.gradientFrom} 0%, rgba(20, 20, 28, 0.95) 65%)`,
+          borderColor: featured.promo.accentColor,
+          borderWidth: '1.5px',
+          borderStyle: 'solid',
+          boxShadow: `0 0 28px ${featured.promo.glowColor}`,
+        }"
+      >
+        <!-- Accent glow corner -->
+        <div
+          class="absolute top-0 right-0 w-24 h-24 rounded-full blur-2xl pointer-events-none opacity-40"
+          :style="{ backgroundColor: featured.promo.accentColor }"
+        />
+
+        <div class="flex items-center gap-3 relative">
+          <div
+            class="flex-shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center relative"
+            :style="{
+              background: `linear-gradient(135deg, ${featured.promo.accentColor}44 0%, ${featured.promo.accentColor}11 100%)`,
+              border: `1.5px solid ${featured.promo.accentColor}`,
+            }"
+          >
+            <Icon :name="featured.promo.icon" size="28" :style="{ color: featured.promo.accentColor }" />
+            <span class="absolute -top-1 -right-1 text-lg">{{ featured.promo.emoji }}</span>
+          </div>
+
+          <div class="flex-1 min-w-0 leading-tight">
+            <p
+              class="text-[8px] font-heading font-bold tracking-widest uppercase mb-0.5"
+              :style="{ color: featured.promo.accentColor }"
+            >
+              Featured Minispil
+            </p>
+            <p class="font-heading font-bold text-white text-base truncate">
+              {{ featured.promo.title }}
+            </p>
+            <p class="text-muted text-[11px] font-body truncate">
+              {{ featured.promo.tagline }}
+            </p>
+          </div>
+
+          <Icon name="mdi:chevron-right" size="24" class="flex-shrink-0 text-muted" />
+        </div>
+      </NuxtLink>
+
+      <!-- Link to all minigames -->
+      <NuxtLink
+        to="/minigames"
+        class="block text-center mt-2.5 text-muted text-xs font-body hover:text-accent transition-colors"
+      >
+        Se alle 3 minispil
+        <Icon name="mdi:arrow-right" size="12" class="inline -mt-0.5" />
+      </NuxtLink>
+    </div>
   </div>
 
   <!-- Loading -->
@@ -239,3 +329,14 @@ async function shareResult() {
     </div>
   </div>
 </template>
+
+<style scoped>
+.featured-card {
+  animation: featured-pulse 3.5s ease-in-out infinite;
+}
+
+@keyframes featured-pulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.1); }
+}
+</style>

@@ -3,9 +3,9 @@
   "configurations": [
     {
       "name": "erdetlars",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 3000
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["nuxi", "dev", "--port", "3006"],
+      "port": 3006
     }
   ]
 }

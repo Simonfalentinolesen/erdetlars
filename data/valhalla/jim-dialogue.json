@@ -113,19 +113,70 @@
   },
   "level5": {
     "intro": [
-      { "speaker": "jim", "text": "Du er tæt på nu, Lars. Det bliver værre. Og bedre.", "mood": "enigmatic" },
-      { "speaker": "jim", "text": "Det er sjovt, ikke? Når man ikke længere ved, om nogen viser vej eller leder én i fordærv.", "mood": "dangerous" }
+      { "speaker": "jim", "text": "Velkommen til overfarten, Lars.", "mood": "quiet" },
+      { "speaker": "jim", "text": "Herfra er der ingen vej tilbage. Kun fremad. Gennem det røde.", "mood": "dark" },
+      { "speaker": "jim", "text": "Tågen lyver. Vandet lyver. Måske lyver jeg også.", "mood": "dangerous" },
+      { "speaker": "jim", "text": "Men du stolede på mig hele vejen hertil, ikke?", "mood": "enigmatic" }
+    ],
+    "phase2": [
+      { "speaker": "jim", "text": "Kan du se dem i tågen? De lignede mig, ikke?", "mood": "amused" },
+      { "speaker": "jim", "text": "Måske ER de mig. Måske har jeg altid været mere end én.", "mood": "cryptic" },
+      { "speaker": "jim", "text": "Du har altid haft en smag for det dramatiske, Lars. Det har jeg også.", "mood": "warm_dangerous" }
+    ],
+    "phase3": [
+      { "speaker": "jim", "text": "Lars. Har du nogensinde tænkt over, hvorfor jeg altid vidste, hvad der ventede?", "mood": "quiet" },
+      { "speaker": "jim", "text": "Fordi jeg har gået denne vej før. Mange gange. Med mange som dig.", "mood": "ancient" },
+      { "speaker": "jim", "text": "Men aldrig med nogen der kom så langt.", "mood": "respect" }
+    ],
+    "arrival": [
+      { "speaker": "jim", "text": "Se, Lars. Valhalla.", "mood": "reverent" },
+      { "speaker": "jim", "text": "Du har fortjent det. Eller også har jeg bare sørget for, at du troede det.", "mood": "trickster" }
+    ],
+    "death": [
+      "Tågen tog dig. Som den har taget alle andre.",
+      "Du druknede i det røde. Smukt, men ynkeligt.",
+      "Selv havet er træt af dig, Lars.",
+      "Lad mig... sige det pænere. Du døde. Igen."
     ]
   },
   "level6": {
     "intro": [
       { "speaker": "jim", "text": "Se på dig, Lars. Du kom faktisk hele vejen.", "mood": "warm" },
-      { "speaker": "jim", "text": "Det er næsten irriterende flot.", "mood": "amused" }
+      { "speaker": "jim", "text": "Det er næsten irriterende flot.", "mood": "amused" },
+      { "speaker": "jim", "text": "Velkommen til Valhalla. Den evige fest.", "mood": "reverent" },
+      { "speaker": "jim", "text": "Gå rundt. Drik. Spis. Tal med krigerne. Du har fortjent det.", "mood": "generous" }
+    ],
+    "feast": [
+      { "speaker": "jim", "text": "Mjøden er god, ikke? Den er altid god her.", "mood": "warm" },
+      { "speaker": "jim", "text": "Se alle de krigere. De har alle gået den vej du gik.", "mood": "philosophical" }
+    ],
+    "drinkgame": [
+      { "speaker": "jim", "text": "Et drikkespil! Tryk SPACE når markøren er i det gyldne felt!", "mood": "excited" },
+      { "speaker": "jim", "text": "Tre runder. Vis hvad du er lavet af, Lars.", "mood": "challenging" }
     ],
     "reveal": [
+      { "speaker": "jim", "text": "Lars.", "mood": "quiet" },
+      { "speaker": "jim", "text": "Har du nogensinde tænkt over, hvorfor jeg altid vidste hvad der ventede?", "mood": "quiet" },
+      { "speaker": "jim", "text": "Fordi jeg har gået denne vej før. Mange gange. Med mange som dig.", "mood": "ancient" },
       { "speaker": "jim", "text": "Du kaldte mig Jim.", "mood": "quiet" },
       { "speaker": "jim", "text": "Andre har kaldt mig andet.", "mood": "dangerous" },
+      { "speaker": "loke", "text": "Du ville jo frem. Jeg sørgede bare for, at du ikke kedede dig undervejs.", "mood": "trickster" },
       { "speaker": "loke", "text": "Valhalla er et fantastisk sted. Især hvis man holder op med at spørge, om man må gå igen.", "mood": "divine" }
+    ],
+    "eternal": [
+      { "speaker": "loke", "text": "Festen fortsætter, Lars. Den fortsætter altid.", "mood": "calm" },
+      { "speaker": "loke", "text": "Mjøden fylder sig selv. Kødet vokser tilbage. Latteren stopper aldrig.", "mood": "divine" },
+      { "speaker": "loke", "text": "Er det her belønningen? Eller den smukkeste fælde?", "mood": "enigmatic" }
+    ],
+    "escape": [
+      { "speaker": "narrator", "text": "Du vender dig mod udgangen. Ravnene hvisker.", "mood": "quiet" },
+      { "speaker": "narrator", "text": "Bag dig hører du Lokes stemme, fjern og varm:", "mood": "distant" },
+      { "speaker": "loke", "text": "Farvel, Lars. Det var... underholdende.", "mood": "fond" }
+    ],
+    "death": [
+      "Man kan ikke dø i Valhalla. Det er hele pointen.",
+      "Du ER allerede død, Lars. Nyd festen.",
+      "Døden er bag dig. Foran dig er der kun mjød."
     ]
   }
 }

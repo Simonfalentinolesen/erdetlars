@@ -3,9 +3,10 @@ import jimData from '~/data/valhalla/jim-dialogue.json'
 
 const router = useRouter()
 const canvasRef = ref<HTMLCanvasElement | null>(null)
+const gameContainerRef = ref<HTMLElement | null>(null)
 
 // ==================== GAME STATE ====================
-const gameState = ref<'loading' | 'cutscene' | 'playing' | 'boss' | 'levelcomplete' | 'dead' | 'paused'>('loading')
+const gameState = ref<'loading' | 'cutscene' | 'playing' | 'boss' | 'levelcomplete' | 'dead' | 'paused' | 'credits'>('loading')
 const currentLevel = ref(1)
 const score = ref(0)
 const lives = ref(3)
@@ -54,10 +55,50 @@ const JUMP_FORCE = -500
 const MOVE_SPEED = 180
 const RUN_SPEED = 270
 
+// World-to-screen zoom factor. Applied in render() after camera translate.
+// Everything inside the camera-transform block is scaled by this.
+// HUD, parallax backgrounds, and post-processing stay in screen space.
+const WORLD_ZOOM = 1.6
+
 let px = 60, py = 0, pvx = 0, pvy = 0
 let onGround = false, facing = 1, invTimer = 0
 let playerPower = 'none' as string
 let powerTimer = 0
+
+// Lars mood — affects how he's drawn. Transient moods auto-revert via larsMoodTimer.
+// 'scared' is a continuous state (set whenever enemies are close) and doesn't use timer.
+let larsMood: 'normal' | 'happy' | 'victory' | 'scared' = 'normal'
+let larsMoodTimer = 0
+let larsBounceTimer = 0 // brief hop when picking up items
+
+// Screen shake — applied as an offset BEFORE the camera transform.
+// shakeAmt decays over time; shakeTrigger sets fresh magnitude.
+let shakeAmt = 0
+function triggerShake(mag: number) {
+  if (mag > shakeAmt) shakeAmt = mag
+}
+
+// Hit-stop — freezes game for N seconds. Used on big hits for punch.
+let hitStopTimer = 0
+
+// Level transition fade (0 = no fade, 1 = fully black)
+let levelFade = 0
+let levelFadeDir = 0 // -1 fading out, +1 fading in, 0 idle
+let pendingLevelAdvance = false
+let larsTrailAccum = 0
+
+// Credits scroll state
+let creditsScrollY = 0
+
+// Highscore (loaded on mount)
+const highscore = ref(0)
+
+function setLarsMood(mood: 'normal' | 'happy' | 'victory' | 'scared', duration: number) {
+  // Victory outranks happy outranks scared outranks normal (never overwrite victory)
+  if (larsMood === 'victory' && larsMoodTimer > 0 && mood !== 'victory') return
+  larsMood = mood
+  larsMoodTimer = duration
+}
 
 function getPlayerH() { return playerPower === 'big' ? 44 : 34 }
 function getPlayerW() { return playerPower === 'big' ? 32 : 26 }
@@ -86,10 +127,23 @@ let checkpointX = 60
 let jimX = 0, jimY = 0, jimVx = 0, jimVy = 0
 let jimOnGround = false, jimActive = false
 let jimComment = '', jimCommentTimer = 0
-let jimPrankActive = '' as string // 'drunk' | 'heavy' | ''
+let jimPrankActive = '' as string // 'drunk' | 'heavy' | 'swap' | 'wind' | 'fire' | 'dalmatian' | ''
 let jimPrankTimer = 0
+let jimMood: 'normal' | 'evil' | 'laughing' | 'pointing' = 'normal'
+let jimMoodTimer = 0
+let jimEvilIntensity = 0 // 0–1 — grows through Level 4–5 as Loke is revealed
+let jimTriggeredSwapL1 = false
+let jimTriggeredWindL3 = false
+let jimTriggeredFireL4 = false
 let dalmatinerActive = false
 let dalmatinerX = 0, dalmatinerY = 0, dalmatinerVx = 0, dalmatinerCaught = false
+
+function setJimMood(mood: 'normal' | 'evil' | 'laughing' | 'pointing', duration: number) {
+  jimMood = mood; jimMoodTimer = duration
+}
+
+// Jim micro-laughs (random tiny bubbles between proper one-liners)
+const JIM_LAUGHS = ['HA!', 'HEH.', 'Lars...', 'Nå ja.', 'Hmpf.', 'Lækkert.']
 
 // Jim one-liner comments (shown floating above Jim)
 const JIM_ONELINERS_L2 = [
@@ -97,6 +151,11 @@ const JIM_ONELINERS_L2 = [
   'Hørte du det?', 'Vi er ikke alene.', 'Lugt den luft, Lars.',
   'Min hund ville elske det her.', 'Rør ikke den svamp.',
   'Interessant...', 'Kom nu, Lars.', 'Den vej.',
+]
+
+const JIM_ONELINERS_L1 = [
+  'Mosen er vådere i år.', 'Pas på ulvene.', 'Lars, du virker tynd.',
+  'Odin venter.', 'Kom nu, Lars. Vi skal nå det.',
 ]
 
 // ==================== PARTICLES ====================
@@ -392,6 +451,8 @@ function buildLevel2() {
   jimX = px + 50; jimY = py
   jimComment = ''; jimCommentTimer = 0
   jimPrankActive = ''; jimPrankTimer = 0
+  jimMood = 'normal'; jimMoodTimer = 0
+  jimTriggeredSwapL1 = false; jimTriggeredWindL3 = false; jimTriggeredFireL4 = false
   dalmatinerActive = false; dalmatinerCaught = false
 
   // Jim dialog triggers (cutscene-based)
@@ -430,6 +491,8 @@ function buildLevel3() {
   jimX = px + 50; jimY = py
   jimComment = ''; jimCommentTimer = 0
   jimPrankActive = ''; jimPrankTimer = 0
+  jimMood = 'normal'; jimMoodTimer = 0
+  jimTriggeredSwapL1 = false; jimTriggeredWindL3 = false; jimTriggeredFireL4 = false
   dalmatinerActive = false; dalmatinerCaught = false
 
   const mkE = (x: number, y: number, t: string, sp: number, r: number) => ({
@@ -541,6 +604,8 @@ function buildLevel4() {
   jimX = px + 50; jimY = py
   jimComment = ''; jimCommentTimer = 0
   jimPrankActive = ''; jimPrankTimer = 0
+  jimMood = 'normal'; jimMoodTimer = 0
+  jimTriggeredSwapL1 = false; jimTriggeredWindL3 = false; jimTriggeredFireL4 = false
   dalmatinerActive = false; dalmatinerCaught = false
   fireDamageTimer = 0
 
@@ -642,6 +707,168 @@ function buildLevel4() {
   checkpointX = 60
 }
 
+// ==================== LEVEL 5: LOKES OVERFART ====================
+// COMPLETELY DIFFERENT GAMEPLAY: Boat auto-scrolls, dodge obstacles, Loke illusions
+// No platforms. Boat IS the ground. Fog everywhere. RED RED RED.
+let boatX = 0, boatY = 0, boatRock = 0
+let boatSpeed = 80
+let boatDistance = 0
+let odinBallX = 0, odinBallY = 0, odinBallVx = 0, odinBallVy = 0
+let odinBallActive = false, odinBounces = 0
+let lokePhase = 0 // 0=start, 1=illusions begin, 2=transformation, 3=arrival
+let lokeIllusions: { x: number; y: number; real: boolean; timer: number }[] = []
+let beerCans: { x: number; y: number; vx: number; vy: number; alive: boolean }[] = []
+let larsBoatOffset = 0 // Lars position offset on boat (-1 to 1)
+let larsMoveTimes = [15, 30, 50] // Bounces at which Lars moves
+let larsMoveCount = 0
+let extraBalls: { x: number; y: number; vx: number; vy: number; active: boolean }[] = []
+let piaActive = false; let piaTimer = 0
+let ghostPaddleActive = false; let ghostPaddleTimer = 0
+let bigLarsActive = false; let bigLarsTimer = 0
+
+interface FogObstacle { x: number; y: number; type: 'wreck' | 'hand' | 'rock' | 'shield'; passed: boolean }
+let fogObstacles: FogObstacle[] = []
+let obstacleTimer = 0
+
+const JIM_ONELINERS_L5 = [
+  'Smukt, ikke?', 'Det røde... det kalder.', 'Hører du stemmer?',
+  'Vi er tæt på...', 'Tågen hvisker.', 'Se ikke ned, Lars.',
+  'Jeg har altid elsket det røde.', 'Næsten fremme...',
+  'Stoler du på mig?', 'Det burde du måske ikke.',
+]
+
+function buildLevel5() {
+  platforms = []; enemies = []; items = []; jimPositions = []; particles = []
+  levelWidth = 6000 // Long boat journey
+  levelHeight = 0
+  goalX = levelWidth - 200
+
+  // Jim companion active but different - he's on the boat
+  jimActive = true
+  jimComment = ''; jimCommentTimer = 0
+  jimPrankActive = ''; jimPrankTimer = 0
+  jimMood = 'normal'; jimMoodTimer = 0
+  jimTriggeredSwapL1 = false; jimTriggeredWindL3 = false; jimTriggeredFireL4 = false
+  dalmatinerActive = false; dalmatinerCaught = false
+
+  // Boat setup - use fallback 500 if H not ready, corrected in update()
+  boatX = 200
+  boatY = H > 200 ? H - 120 : 500
+  boatRock = 0
+  boatSpeed = 80
+  boatDistance = 0
+  lokePhase = 0
+  lokeIllusions = []
+  fogObstacles = []
+  obstacleTimer = 1
+
+  // No platforms - boat is the paddle
+
+  // Odin ball + projectiles + extras
+  odinBallActive = false; odinBounces = 0
+  beerCans = []; extraBalls = []
+  larsBoatOffset = 0; larsMoveCount = 0
+  piaActive = false; piaTimer = 0
+  ghostPaddleActive = false; ghostPaddleTimer = 0
+  bigLarsActive = false; bigLarsTimer = 0
+  odinBallX = boatX + 120
+  odinBallY = boatY - 30
+  odinBallVx = 0; odinBallVy = 0
+
+  // Items in a GRID at the top (breakout-style targets to hit with the ball)
+  const cols = 8, rows = 3
+  const gridW = W * 0.85, gridH = 100
+  const gridX = (W - gridW) / 2, gridY = 70
+  const cellW = gridW / cols, cellH = gridH / rows
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      let type: 'ol' | 'jim_token' | 'dalmatiner' = 'ol'
+      if (row === 0 && col % 3 === 1) type = 'jim_token'
+      if (row === 1 && col === 4) type = 'dalmatiner'
+      if (row === 0 && col === 6) type = 'dalmatiner'
+      items.push({
+        x: gridX + col * cellW + cellW / 2,
+        y: gridY + row * cellH + cellH / 2,
+        type, collected: false,
+      })
+    }
+  }
+
+  // Dialog triggers based on bounces (handled in update)
+  jimPositions = []
+
+  checkpointX = 0
+}
+
+// ==================== LEVEL 6: VALHALLA - DEN EVIGE FEST ====================
+// COMPLETELY DIFFERENT: Exploration, NPCs, feast, Jim/Loke reveal, eternal loop
+// No platforming, no gravity, no enemies. Lars WALKS through the great hall.
+interface NPC { x: number; y: number; name: string; dialogue: string[]; interacted: boolean; type: 'warrior' | 'valkyrie' | 'skald' | 'king' }
+let npcs: NPC[] = []
+let valhallaPhase = 0 // 0=explore, 1=feast, 2=drinkgame, 3=reveal, 4=eternal, 5=escaped
+let drinkGameActive = false, drinkGameRound = 0, drinkGameMarker = 0, drinkGameScore = 0
+let revealProgress = 0 // 0 to 1, visual transformation
+let eternalLoopCount = 0
+let talkingToNpc: NPC | null = null, npcDialogIndex = 0
+let showNpcPrompt = false, nearestNpcName = ''
+
+const JIM_ONELINERS_L6 = [
+  'Smukt sted, ikke?', 'Drik! Spis!', 'Hør den musik...',
+  'Krigerne hilser dig.', 'Du hører til her, Lars.',
+  'Mjøden er uendelig.', 'Festen stopper aldrig.',
+  'Har du talt med kongen?', 'Valkyrierne holder øje med dig.',
+]
+
+function buildLevel6() {
+  platforms = []; enemies = []; items = []; jimPositions = []; particles = []
+  const gndY = H > 200 ? H - 60 : 540
+  levelWidth = 3500
+  levelHeight = 0
+  goalX = 99999 // No traditional goal in Valhalla
+
+  // Jim companion
+  jimActive = true
+  jimComment = ''; jimCommentTimer = 0
+  jimPrankActive = ''; jimPrankTimer = 0
+  jimMood = 'normal'; jimMoodTimer = 0
+  jimTriggeredSwapL1 = false; jimTriggeredWindL3 = false; jimTriggeredFireL4 = false
+
+  // Single flat floor (the great hall)
+  platforms.push({ x: -200, y: gndY, w: levelWidth + 400, h: 50, type: 'stone' })
+
+  // Valhalla state
+  valhallaPhase = 0; drinkGameActive = false; drinkGameRound = 0
+  drinkGameMarker = 0; drinkGameScore = 0; revealProgress = 0
+  eternalLoopCount = 0; talkingToNpc = null; showNpcPrompt = false
+
+  // NPCs spread through the hall
+  npcs = [
+    { x: 400, y: gndY - 35, name: 'Bjørn Jernside', dialogue: ['Skål, kriger! Du er kommet langt.', 'Mjøden er varm og kæmperne er mange.', 'Her kæmper vi om dagen og fester om natten. For evigt.'], interacted: false, type: 'warrior' },
+    { x: 800, y: gndY - 35, name: 'Freya Skjoldmø', dialogue: ['En ny sjæl i hallen. Velkommen.', 'Du har kæmpet godt, Lars. Det kan jeg se på dine ar.', 'Drik. Du har fortjent det.'], interacted: false, type: 'valkyrie' },
+    { x: 1200, y: gndY - 35, name: 'Ragnar Mjødbrygger', dialogue: ['SKÅL! Prøv min mjød!', 'Vil du spille et drikkespil? Gå til det store bord!'], interacted: false, type: 'warrior' },
+    { x: 1600, y: gndY - 35, name: 'Bragi Skalden', dialogue: ['Jeg har sunget om din rejse, Lars.', 'Gennem mose, skov, klipper og ild.', 'Over det røde hav. Til denne hal.', 'Dit saga er... næsten skrevet færdig.'], interacted: false, type: 'skald' },
+    { x: 2000, y: gndY - 35, name: 'Odin Alfader', dialogue: ['Lars.', 'Du har bevist dit værd.', 'Denne hal er din belønning. Eller din fælde.', 'Det afhænger af perspektivet.'], interacted: false, type: 'king' },
+    { x: 2800, y: gndY - 35, name: 'Sigrun Valkyrie', dialogue: ['Festen varer evigt her.', 'Har du lagt mærke til det? Ingen går nogensinde.', 'Ingen KAN gå.', '...medmindre du kender vejen.'], interacted: false, type: 'valkyrie' },
+    { x: 3080, y: gndY - 35, name: 'Den Gamle Porsche-Ejer', dialogue: ['I min tid kørte vi i 911\'ere.', 'Flad sekser. Nul elektronik. Ren olie.', 'I dag... mjød.', 'Men jeg husker hver eneste gearskift, Lars.'], interacted: false, type: 'porsche' },
+  ]
+
+  // Mjød, mad, guld items spread through hall
+  for (let ix = 200; ix < levelWidth - 200; ix += 150) {
+    const type = Math.random() > 0.7 ? 'jim_token' : Math.random() > 0.5 ? 'dalmatiner' : 'ol'
+    items.push({ x: ix + Math.random() * 80, y: gndY - 20, type, collected: false })
+  }
+
+  // Jim dialog triggers
+  jimPositions = [
+    { x: 1400, y: gndY - 80, dialogKey: 'feast', triggered: false },
+  ]
+
+  // Drinkgame zone at x=1200
+  // Reveal zone at x=2500
+
+  checkpointX = 60
+}
+
 const LEVEL_NAMES = ['FANGENS MOSER', 'DEN SORTE SKOV', 'BLODKLIPPERNE', 'RITUALILDEN', 'LOKES OVERFART', 'VALHALLA']
 
 // ==================== CUTSCENE SYSTEM ====================
@@ -696,6 +923,36 @@ function update(dt: number) {
   time.value += dt
   if (deadDelay > 0) deadDelay -= dt
 
+  // Level transition fade driver
+  if (levelFadeDir === -1) {
+    levelFade += dt / 0.8 // 0.8s fade out
+    if (levelFade >= 1) {
+      levelFade = 1
+      levelFadeDir = 0
+      doActualAdvanceLevel()
+    }
+  } else if (levelFadeDir === 1) {
+    levelFade -= dt / 0.8
+    if (levelFade <= 0) {
+      levelFade = 0
+      levelFadeDir = 0
+    }
+  }
+
+  // Hit-stop freezes all update logic for a beat (impact emphasis)
+  if (hitStopTimer > 0) { hitStopTimer -= dt; return }
+
+  // Decay screen shake
+  if (shakeAmt > 0) { shakeAmt = Math.max(0, shakeAmt - dt * 30) }
+
+  // Lars mood timer (happy/victory revert to normal when expired).
+  // 'scared' is set fresh every frame by enemy proximity check; it decays naturally.
+  if (larsMoodTimer > 0) {
+    larsMoodTimer -= dt
+    if (larsMoodTimer <= 0 && larsMood !== 'scared') larsMood = 'normal'
+  }
+  if (larsBounceTimer > 0) larsBounceTimer -= dt
+
   // Atmospheric effects - different per level
   if (gameState.value === 'playing' || gameState.value === 'boss') {
     if (currentLevel.value === 1) {
@@ -731,6 +988,8 @@ function update(dt: number) {
       windForce = Math.sin(time.value * 0.8) * 120 + Math.sin(time.value * 2.3) * 80
       // Occasional mega gust
       if (Math.sin(time.value * 0.3) > 0.85) windForce *= 2
+      // Jim's wind prank: double it!
+      if (jimPrankActive === 'wind') windForce *= 2
     } else if (currentLevel.value === 4) {
       // LOTS of rising embers (more than before)
       for (let em = 0; em < 2; em++) {
@@ -747,12 +1006,419 @@ function update(dt: number) {
         const sp = platforms.find(p => (p.type === 'altar' || p.type === 'torch') && p.x > cameraX - 50 && p.x < cameraX + W + 50)
         if (sp) particles.push({ x: sp.x + sp.w / 2 + (Math.random() - 0.5) * 20, y: sp.y - 5, vx: (Math.random() - 0.5) * 15, vy: -40 - Math.random() * 50, life: 2 + Math.random() * 3, maxLife: 2 + Math.random() * 3, size: 10 + Math.random() * 20, color: 'fire_smoke' })
       }
-      // LAVA ERUPTIONS from below (volcanic geysers)
-      if (Math.random() < 0.015) {
+      // LAVA ERUPTIONS from below (volcanic geysers) — Jim's fire prank doubles frequency
+      const eruptRate = jimPrankActive === 'fire' ? 0.04 : 0.015
+      if (Math.random() < eruptRate) {
         const lavaX = cameraX + Math.random() * W
         for (let lv = 0; lv < 8; lv++) {
           particles.push({ x: lavaX + (Math.random() - 0.5) * 15, y: H + 5, vx: (Math.random() - 0.5) * 50, vy: -150 - Math.random() * 200, life: 1.5 + Math.random() * 1.5, maxLife: 1.5 + Math.random() * 1.5, size: 2 + Math.random() * 4, color: 'lava' })
         }
+      }
+      // Jim fire-prank: extra column of fire right where Lars is standing
+      if (jimPrankActive === 'fire' && Math.random() < 0.3) {
+        for (let fc = 0; fc < 5; fc++) {
+          particles.push({ x: px + (Math.random() - 0.5) * 60, y: py + 50, vx: (Math.random() - 0.5) * 30, vy: -200 - Math.random() * 150, life: 1 + Math.random(), maxLife: 1 + Math.random(), size: 2 + Math.random() * 4, color: 'lava' })
+        }
+      }
+    } else if (currentLevel.value === 5) {
+      // HEAVY RED FOG - constant, thick, beautiful
+      for (let rf = 0; rf < 3; rf++) {
+        if (Math.random() < 0.15) {
+          particles.push({ x: cameraX + W + 20, y: Math.random() * H, vx: -30 - Math.random() * 40, vy: (Math.random() - 0.5) * 10, life: 4 + Math.random() * 5, maxLife: 4 + Math.random() * 5, size: 30 + Math.random() * 60, color: 'red_fog' })
+        }
+      }
+      // Red embers
+      if (Math.random() < 0.08) {
+        particles.push({ x: cameraX + Math.random() * W, y: H + 5, vx: -10 + Math.random() * 20, vy: -20 - Math.random() * 40, life: 3 + Math.random() * 3, maxLife: 3 + Math.random() * 3, size: 1 + Math.random() * 2, color: 'red_ember' })
+      }
+
+      // === ODIN PONG - Boat is paddle, Odin's head is ball ===
+      if (gameState.value === 'playing') {
+        cameraX = 0 // Fixed camera for pong
+        // Ensure boat is near bottom of screen
+        if (H > 200) boatY = H - 120
+        boatRock = Math.sin(time.value * 1.5) * 3
+
+        // Boat (paddle) movement - left/right with keys
+        const moveSpeed = 600 // FAST paddle
+        let left5 = keysDown.has('ArrowLeft') || keysDown.has('KeyA')
+        let right5 = keysDown.has('ArrowRight') || keysDown.has('KeyD')
+        // Loke's drunk prank inverts
+        if (jimPrankActive === 'drunk') { const tmp = left5; left5 = right5; right5 = tmp }
+        if (left5) boatX -= moveSpeed * dt
+        if (right5) boatX += moveSpeed * dt
+        // Lock boat within screen bounds (tight)
+        const paddleVisualW = jimPrankActive === 'shrink' ? 130 : 240
+        boatX = Math.max(5, Math.min(W - paddleVisualW - 30, boatX))
+
+        // Lars LOCKED to boat - no gravity, no falling
+        // Lars position shifts based on larsBoatOffset (-0.3 to 0.3)
+        const larsOnBoat = 110 + larsBoatOffset * 80
+        px = boatX + larsOnBoat; py = boatY - 40 + boatRock
+        pvy = 0; onGround = true
+
+        // SHOOT with Space/Up - only when ball is already active and have ammo
+        if (odinBallActive && odinBounces > 0 && (tapped || keysDown.has('Space') || keysDown.has('ArrowUp'))) {
+          tapped = false; keysDown.delete('Space'); keysDown.delete('ArrowUp')
+          odinBounces--
+          beerCans.push({ x: boatX + 120, y: boatY - 15, vx: 0, vy: -500, alive: true })
+          spawnParticles(boatX + 120, boatY - 10, 3, '#F5A623', 30)
+        }
+
+        // Skull shots hit items!
+        for (const shot of beerCans) {
+          if (!shot.alive) continue
+          shot.y += shot.vy * dt
+          if (shot.y < 0) { shot.alive = false; continue }
+          for (const item of items) {
+            if (item.collected) continue
+            if (Math.abs(shot.x - item.x) < 20 && Math.abs(shot.y - item.y) < 20) {
+              item.collected = true; shot.alive = false
+              if (item.type === 'ol') { levelOl.value++; score.value += 50; spawnParticles(item.x, item.y, 8, '#F5A623', 50) }
+              else if (item.type === 'jim_token') { levelJim.value++; score.value += 100; spawnParticles(item.x, item.y, 10, '#E84393', 60) }
+              else if (item.type === 'dalmatiner') { levelDal.value++; score.value += 150; spawnParticles(item.x, item.y, 12, '#FFFFFF', 70) }
+            }
+          }
+        }
+        beerCans = beerCans.filter(b => b.alive)
+
+        // Odin's head (ball) - sits on boat until Space launches it
+        if (!odinBallActive) {
+          // Ball rests on the boat, waiting to be launched
+          odinBallX = boatX + 120
+          odinBallY = boatY - 30
+          odinBallVx = 0; odinBallVy = 0
+          // Launch with Space/Up/tap
+          if (tapped || keysDown.has('Space') || keysDown.has('ArrowUp')) {
+            tapped = false; keysDown.delete('Space'); keysDown.delete('ArrowUp')
+            odinBallVx = (Math.random() - 0.5) * 120
+            odinBallVy = -180
+            odinBallActive = true
+          }
+          // Ball follows boat while resting
+        } else {
+          // Ball is active - apply physics
+
+        odinBallX += odinBallVx * dt
+        odinBallY += odinBallVy * dt
+
+        // Wall bounces (tight to screen edges)
+        if (odinBallX < 12) { odinBallVx = Math.abs(odinBallVx); odinBallX = 12 }
+        if (odinBallX > W - 12) { odinBallVx = -Math.abs(odinBallVx); odinBallX = W - 12 }
+        // Ceiling bounce
+        if (odinBallY < 55) { odinBallVy = Math.abs(odinBallVy); odinBallY = 55 }
+
+        // Boat paddle collision (shrinks when Loke pranks!)
+        const paddleW = jimPrankActive === 'shrink' ? 120 : 255
+        const boatLeft = boatX + (255 - paddleW) / 2 - 15
+        const boatRight = boatLeft + paddleW
+        const boatTop = boatY - 10 + boatRock
+        const paddleCenter = (boatLeft + boatRight) / 2
+        if (odinBallY + 12 >= boatTop && odinBallY < boatTop + 20 && odinBallX > boatLeft && odinBallX < boatRight && odinBallVy > 0) {
+          odinBallVy = -Math.abs(odinBallVy) - 15
+          // Angle based on where ball hits relative to CENTER of paddle
+          // Left of center = ball goes left, right of center = ball goes right
+          const hitPos = (odinBallX - paddleCenter) / (paddleW / 2) // -1 to 1
+          odinBallVx = hitPos * 220
+          odinBounces++
+          score.value += 10
+          spawnParticles(odinBallX, boatTop, 5, '#F5A623', 40)
+
+          // Lars moves 3 times total (at bounce 15, 30, 50)
+          if (larsMoveCount < 3 && odinBounces >= larsMoveTimes[larsMoveCount]) {
+            larsMoveCount++
+            larsBoatOffset = (Math.random() - 0.5) * 0.6 // -0.3 to 0.3
+            jimComment = larsMoveCount === 1 ? 'Lars! Stå stille!' : larsMoveCount === 2 ? 'LARS! Hold op med at flytte dig!' : 'Lars er umulig...'
+            jimCommentTimer = 4
+          }
+
+          // Speed up gradually
+          odinBallVy -= Math.min(odinBounces * 3, 60)
+        }
+
+        // Ball falls below boat = lose a life, ball goes back to boat
+        if (odinBallY > H + 20) {
+          takeDamage()
+          odinBallActive = false
+          spawnParticles(W / 2, H - 20, 10, '#8B2030', 80)
+        }
+        } // end ball active else block
+
+        // Collectibles floating at top - hit them with the ball OR shots
+        for (const item of items) {
+          if (item.collected) continue
+          if (Math.abs(odinBallX - item.x) < 18 && Math.abs(odinBallY - item.y) < 18) {
+            item.collected = true
+            odinBallVy *= -1 // Bounce off item
+            if (item.type === 'ol') { levelOl.value++; score.value += 50; spawnParticles(item.x, item.y, 8, '#F5A623', 50) }
+            else if (item.type === 'jim_token') { levelJim.value++; score.value += 100; spawnParticles(item.x, item.y, 10, '#E84393', 60) }
+            else if (item.type === 'dalmatiner') { levelDal.value++; score.value += 150; spawnParticles(item.x, item.y, 12, '#FFFFFF', 70) }
+          }
+        }
+
+        // Loke phases based on bounces
+        if (odinBounces > 8 && lokePhase === 0) lokePhase = 1
+        if (odinBounces > 20 && lokePhase === 1) lokePhase = 2
+        if (odinBounces > 35 && lokePhase === 2) lokePhase = 3
+
+        // === LOKE'S CHAOS EVENTS (good AND bad!) ===
+        if (jimPrankTimer > 0) jimPrankTimer -= dt
+        else jimPrankActive = ''
+        if (piaTimer > 0) piaTimer -= dt
+        else piaActive = false
+        if (ghostPaddleTimer > 0) ghostPaddleTimer -= dt
+        else ghostPaddleActive = false
+        if (bigLarsTimer > 0) bigLarsTimer -= dt
+        else bigLarsActive = false
+
+        // Update extra balls (MEGA BOLDE)
+        for (const eb of extraBalls) {
+          if (!eb.active) continue
+          eb.x += eb.vx * dt; eb.y += eb.vy * dt
+          if (eb.x < 12 || eb.x > W - 12) eb.vx *= -1
+          if (eb.y < 55) eb.vy = Math.abs(eb.vy)
+          // Extra balls hit items!
+          for (const item of items) {
+            if (item.collected) continue
+            if (Math.abs(eb.x - item.x) < 16 && Math.abs(eb.y - item.y) < 16) {
+              item.collected = true; eb.vy *= -1
+              if (item.type === 'ol') { levelOl.value++; score.value += 50; spawnParticles(item.x, item.y, 6, '#F5A623', 40) }
+              else if (item.type === 'jim_token') { levelJim.value++; score.value += 100; spawnParticles(item.x, item.y, 8, '#E84393', 50) }
+              else if (item.type === 'dalmatiner') { levelDal.value++; score.value += 150; spawnParticles(item.x, item.y, 10, '#FFFFFF', 60) }
+            }
+          }
+          // Extra balls bounce on paddle too
+          if (eb.y + 10 >= boatTop && eb.y < boatTop + 20 && eb.x > boatLeft && eb.x < boatRight && eb.vy > 0) {
+            eb.vy = -Math.abs(eb.vy)
+          }
+          if (eb.y > H + 30) eb.active = false
+        }
+        extraBalls = extraBalls.filter(eb => eb.active)
+
+        // Ghost paddle bounces ball from top
+        if (ghostPaddleActive && odinBallActive) {
+          const ghostY = 200
+          if (odinBallY - 12 <= ghostY && odinBallY > ghostY - 15 && odinBallVy < 0) {
+            odinBallVy = Math.abs(odinBallVy) * 0.8
+            spawnParticles(odinBallX, ghostY, 3, '#8B2030', 30)
+          }
+        }
+
+        // Pia freezes boat
+        if (piaActive) {
+          boatX = boatX // Can't move!
+        }
+
+        // Trigger chaos events
+        if (lokePhase >= 1 && Math.random() < 0.004 && !jimPrankActive && !piaActive) {
+          const chaosType = Math.floor(Math.random() * 12)
+
+          if (chaosType === 0) {
+            // INVERTEREDE CONTROLS (BAD)
+            jimPrankActive = 'drunk'; jimPrankTimer = 4
+            jimComment = 'Venstre er h\u00f8jre nu! Ha!'
+            jimCommentTimer = 4
+          } else if (chaosType === 1) {
+            // MINI-B\u00c5D (BAD)
+            jimPrankActive = 'shrink'; jimPrankTimer = 5
+            jimComment = 'Din b\u00e5d er lidt... lille nu.'
+            jimCommentTimer = 4
+          } else if (chaosType === 2) {
+            // M\u00d8RKE (BAD)
+            jimPrankActive = 'dark'; jimPrankTimer = 3
+            jimComment = 'Kan du se noget? Nej? Godt.'
+            jimCommentTimer = 3
+          } else if (chaosType === 3) {
+            // USYNLIG BOLD (BAD)
+            jimPrankActive = 'invisible_ball'; jimPrankTimer = 2.5
+            jimComment = 'Hvor er hovedet? Hm...'
+            jimCommentTimer = 3
+          } else if (chaosType === 4) {
+            // PIA RINGER! (BAD - freezes boat)
+            piaActive = true; piaTimer = 2.5
+            jimComment = 'PIA RINGER! Lars kan ikke bev\u00e6ge sig!'
+            jimCommentTimer = 3
+          } else if (chaosType === 5 && lokePhase >= 2) {
+            // NIDHOGG (BAD - fire)
+            jimComment = 'NIDHOGG KOMMER!'
+            jimCommentTimer = 3
+            for (let fire = 0; fire < 20; fire++) {
+              particles.push({ x: W * 0.8, y: H * 0.15, vx: -100 - Math.random() * 150, vy: 80 + Math.random() * 100, life: 2 + Math.random() * 2, maxLife: 2 + Math.random() * 2, size: 3 + Math.random() * 5, color: 'dragonfire' })
+            }
+          } else if (chaosType === 6) {
+            // KAST LARS (BAD/FUNNY - Lars flies up)
+            jimComment = 'WHEEE! Flyvende Lars!'
+            jimCommentTimer = 3
+            // Lars as particle flying up
+            for (let lp = 0; lp < 8; lp++) {
+              particles.push({ x: px + 13, y: py + 17, vx: (Math.random() - 0.5) * 60, vy: -150 - Math.random() * 100, life: 1.5, maxLife: 1.5, size: 3, color: '#D4A574' })
+            }
+          } else if (chaosType === 7) {
+            // === GOOD EVENTS ===
+            // MEGA BOLDE! (GOOD - extra real balls!)
+            jimComment = 'FLERE HOVEDER! Odin er gener\u00f8s!'
+            jimCommentTimer = 4
+            for (let mb = 0; mb < 4; mb++) {
+              extraBalls.push({ x: W * 0.2 + Math.random() * W * 0.6, y: H * 0.3, vx: (Math.random() - 0.5) * 200, vy: -120 - Math.random() * 100, active: true })
+            }
+          } else if (chaosType === 8) {
+            // TYK LARS (FUNNY - purely visual)
+            bigLarsActive = true; bigLarsTimer = 5
+            jimComment = 'Har du taget p\u00e5, Lars?'
+            jimCommentTimer = 4
+          } else if (chaosType === 9) {
+            // STOR LARS (FUNNY - blocks view)
+            bigLarsActive = true; bigLarsTimer = 4
+            jimComment = 'Du er en STOR mand, Lars.'
+            jimCommentTimer = 3
+          } else if (chaosType === 10) {
+            // DOBBELT PADDLE (GOOD - ghost boat at top)
+            ghostPaddleActive = true; ghostPaddleTimer = 6
+            jimComment = 'To b\u00e5de! Jeg er gener\u00f8s i dag.'
+            jimCommentTimer = 4
+          } else if (chaosType === 11) {
+            // GRATIS SKUD (GOOD)
+            odinBounces += 5
+            jimComment = '5 gratis skud! Sk\u00e5l!'
+            jimCommentTimer = 3
+            spawnParticles(W / 2, H / 2, 15, '#F5A623', 100)
+          }
+        }
+
+        // Loke illusions in fog
+        if (lokePhase >= 1 && Math.random() < 0.006) {
+          lokeIllusions.push({ x: Math.random() * W, y: 60 + Math.random() * (H * 0.3), real: Math.random() > 0.7, timer: 3 })
+        }
+        for (const il of lokeIllusions) il.timer -= dt
+        lokeIllusions = lokeIllusions.filter(il => il.timer > 0)
+
+        // Win condition: collect enough items
+        const allCollected = items.every(i => i.collected)
+        if (allCollected && !goalReached) {
+          goalReached = true
+          const d = getLevelDialog('arrival')
+          if (d) startCutscene(d, () => { gameState.value = 'levelcomplete' })
+          else gameState.value = 'levelcomplete'
+        }
+      }
+
+      // Jim one-liners
+      if (jimCommentTimer > -2) jimCommentTimer -= dt
+      if (jimCommentTimer <= 0 && Math.random() < 0.008) {
+        jimComment = JIM_ONELINERS_L5[Math.floor(Math.random() * JIM_ONELINERS_L5.length)]
+        jimCommentTimer = 6 + Math.random() * 8
+      }
+    } else if (currentLevel.value === 6) {
+      // VALHALLA atmosphere: golden embers rising, warm smoke
+      if (Math.random() < 0.1) {
+        particles.push({ x: cameraX + Math.random() * W, y: H + 5, vx: (Math.random() - 0.5) * 20, vy: -40 - Math.random() * 60, life: 3 + Math.random() * 3, maxLife: 3 + Math.random() * 3, size: 1.5 + Math.random() * 2, color: 'gold_ember' })
+      }
+      if (Math.random() < 0.04) {
+        particles.push({ x: cameraX + Math.random() * W, y: H * 0.3 + Math.random() * H * 0.4, vx: 8 + Math.random() * 10, vy: -5 + Math.random() * 5, life: 3 + Math.random() * 4, maxLife: 3 + Math.random() * 4, size: 20 + Math.random() * 35, color: 'warm_smoke' })
+      }
+
+      // === VALHALLA GAMEPLAY ===
+      if (gameState.value === 'playing') {
+        const gndY = H > 200 ? H - 60 : 540
+
+        // NO gravity, NO jumping - Lars walks on the hall floor
+        pvy = 0; py = gndY - getPlayerH(); onGround = true
+
+        // NPC proximity detection
+        showNpcPrompt = false; nearestNpcName = ''
+        for (const npc of npcs) {
+          if (Math.abs(px + getPlayerW() / 2 - npc.x) < 50) {
+            showNpcPrompt = true; nearestNpcName = npc.name
+            // Talk to NPC with Space/Up
+            if (tapped || keysDown.has('Space') || keysDown.has('ArrowUp')) {
+              tapped = false; keysDown.delete('Space'); keysDown.delete('ArrowUp')
+              if (!talkingToNpc) {
+                talkingToNpc = npc; npcDialogIndex = 0
+                npc.interacted = true
+                gameState.value = 'cutscene'
+                startCutscene(npc.dialogue.map(t => ({ speaker: 'npc', text: `${npc.name}: ${t}`, mood: 'neutral' })), () => {
+                  talkingToNpc = null
+                  // Check for drinkgame trigger
+                  if (npc.name === 'Ragnar Mjødbrygger' && !drinkGameActive && valhallaPhase < 2) {
+                    valhallaPhase = 2; drinkGameActive = true; drinkGameRound = 0; drinkGameScore = 0
+                    const dDialog = getLevelDialog('drinkgame')
+                    if (dDialog) startCutscene(dDialog, () => { gameState.value = 'playing' })
+                  }
+                })
+              }
+            }
+            break
+          }
+        }
+
+        // Drinkgame (simple timing: marker oscillates, press Space in gold zone)
+        if (drinkGameActive && valhallaPhase === 2) {
+          drinkGameMarker = (drinkGameMarker + 200 * dt) % 100 // 0-100 oscillating
+          if (tapped || keysDown.has('Space')) {
+            tapped = false; keysDown.delete('Space')
+            const inZone = drinkGameMarker > 35 && drinkGameMarker < 65 // Sweet spot
+            if (inZone) {
+              drinkGameScore++; jimComment = 'SKÅL!'; jimCommentTimer = 2
+              spawnParticles(px + 13, py - 10, 8, '#F5A623', 50)
+            } else {
+              jimComment = 'Ved siden af!'; jimCommentTimer = 2
+            }
+            drinkGameRound++
+            if (drinkGameRound >= 3) {
+              drinkGameActive = false
+              score.value += drinkGameScore * 100
+              jimComment = drinkGameScore >= 2 ? 'Lars kan DRIKKE!' : 'Øv... Prøv at drikke mere, Lars.'
+              jimCommentTimer = 4
+            }
+          }
+        }
+
+        // LOKE REVEAL at x=2500 (after talking to most NPCs)
+        const npcsInteracted = npcs.filter(n => n.interacted).length
+        if (px > 2400 && npcsInteracted >= 4 && valhallaPhase < 3) {
+          valhallaPhase = 3
+          const revDialog = getLevelDialog('reveal')
+          if (revDialog) {
+            startCutscene(revDialog, () => {
+              valhallaPhase = 4 // Eternal feast
+              const etDialog = getLevelDialog('eternal')
+              if (etDialog) startCutscene(etDialog, () => {
+                eternalLoopCount++
+                // NPC'er får ny dialog
+                for (const npc of npcs) {
+                  npc.interacted = false
+                  npc.dialogue = ['Festen fortsætter...', 'Har du ikke været her før?', 'Tiden er underlig her.']
+                }
+                jimComment = 'Velkommen tilbage, Lars. Igen.'
+                jimCommentTimer = 5
+              })
+            })
+          }
+        }
+
+        // SECRET ESCAPE: Walk LEFT past x=0 after reveal
+        if (valhallaPhase >= 4 && px < -50) {
+          valhallaPhase = 5
+          const escDialog = getLevelDialog('escape')
+          if (escDialog) {
+            startCutscene(escDialog, () => {
+              // GAME COMPLETE! Show victory
+              gameState.value = 'levelcomplete'
+            })
+          }
+        }
+
+        // Jim one-liners
+        if (jimCommentTimer > -2) jimCommentTimer -= dt
+        if (jimCommentTimer <= 0 && Math.random() < 0.006) {
+          jimComment = valhallaPhase >= 3
+            ? ['Festen stopper aldrig.', 'Du kan ikke gå, Lars.', 'Velkommen... igen.'][Math.floor(Math.random() * 3)]
+            : JIM_ONELINERS_L6[Math.floor(Math.random() * JIM_ONELINERS_L6.length)]
+          jimCommentTimer = 8 + Math.random() * 10
+        }
+
+        // Reveal visual progress (used in render)
+        if (valhallaPhase === 3) revealProgress = Math.min(revealProgress + dt * 0.3, 1)
       }
     }
   }
@@ -776,8 +1442,8 @@ function update(dt: number) {
   const run = keysDown.has('ShiftLeft') || keysDown.has('ShiftRight')
   const speed = run ? RUN_SPEED : MOVE_SPEED
 
-  // Jim prank: DRUNK - inverted controls!
-  if (jimPrankActive === 'drunk') {
+  // Jim prank: DRUNK or SWAP - inverted controls!
+  if (jimPrankActive === 'drunk' || jimPrankActive === 'swap') {
     const tmp = left; left = right; right = tmp
   }
 
@@ -795,7 +1461,8 @@ function update(dt: number) {
   }
 
   // Physics
-  pvy += GRAVITY * dt
+  // No gravity in Level 5 (pong) or Level 6 (exploration)
+  if (currentLevel.value !== 5 && currentLevel.value !== 6) pvy += GRAVITY * dt
   // Wind effect (Level 3) - directly moves Lars, can lift him off ground
   if (currentLevel.value === 3) {
     // Horizontal push - applied directly to position (bypasses pvx reset)
@@ -817,6 +1484,22 @@ function update(dt: number) {
   px += pvx * dt
   py += pvy * dt
   if (px < 0) px = 0
+
+  // Lars trail particles when running fast (Fase 6 juice)
+  if (Math.abs(pvx) > 150 && onGround) {
+    larsTrailAccum += dt
+    if (larsTrailAccum > 0.06) {
+      larsTrailAccum = 0
+      particles.push({
+        x: px + pw / 2, y: py + ph - 4,
+        vx: -pvx * 0.1 + (Math.random() - 0.5) * 20,
+        vy: -10 - Math.random() * 20,
+        life: 0.4, maxLife: 0.4, size: 2 + Math.random() * 2,
+        color: '#a8c5e0'
+      })
+    }
+  }
+
   if (invTimer > 0) invTimer -= dt
   if (powerTimer > 0) { powerTimer -= dt; if (powerTimer <= 0) playerPower = 'none' }
 
@@ -838,9 +1521,14 @@ function update(dt: number) {
     if (lives.value > 0) { px = checkpointX; py = H - 200; pvy = 0; invTimer = 2 }
   }
 
-  // Camera
-  const targetCam = px - W * 0.35
-  cameraX = Math.max(0, Math.min(targetCam, levelWidth - W))
+  // Camera follows Lars, accounting for WORLD_ZOOM.
+  // viewW/viewH are the visible world dimensions after zoom.
+  const viewW = W / WORLD_ZOOM
+  const viewH = H / WORLD_ZOOM
+  const targetCamX = px - viewW * 0.4
+  cameraX = Math.max(0, Math.min(targetCamX, levelWidth - viewW))
+  const targetCamY = py - viewH * 0.55
+  cameraY = Math.max(0, Math.min(targetCamY, H - viewH))
 
   // === ENEMIES ===
   for (const e of enemies) {
@@ -855,6 +1543,9 @@ function update(dt: number) {
       if (pvy > 0 && py + ph < e.y + 12) {
         e.alive = false; pvy = -300; score.value += 50
         spawnParticles(e.x + e.w / 2, e.y, 8, '#8B4513', 80)
+        // Small shake + happy mood on successful stomp
+        triggerShake(3)
+        setLarsMood('happy', 0.4)
       } else if (invTimer <= 0) {
         takeDamage()
       }
@@ -866,13 +1557,51 @@ function update(dt: number) {
     if (item.collected) continue
     if (collides(px, py, pw, ph, item.x - 10, item.y - 10, 20, 20)) {
       item.collected = true
+      // Lars grins when picking up ANY item — small joy burst
+      setLarsMood('happy', 0.6)
+      larsBounceTimer = 0.3
       switch (item.type) {
-        case 'ol': levelOl.value++; score.value += 10; spawnParticles(item.x, item.y, 6, '#F5A623', 50); break
-        case 'jim_token': levelJim.value++; score.value += 50; spawnParticles(item.x, item.y, 10, '#E84393', 60); break
-        case 'dalmatiner': levelDal.value++; score.value += 100; spawnParticles(item.x, item.y, 12, '#FFFFFF', 70); break
-        case 'powerup_big': playerPower = 'big'; powerTimer = 999; spawnParticles(item.x, item.y, 10, '#FF2222', 60); break
+        case 'ol':
+          levelOl.value++; score.value += 10
+          spawnParticles(item.x, item.y, 6, '#F5A623', 50)
+          // Extra sparkle stars for beer
+          for (let ss = 0; ss < 6; ss++) {
+            particles.push({
+              x: item.x + (Math.random() - 0.5) * 16, y: item.y + (Math.random() - 0.5) * 16,
+              vx: (Math.random() - 0.5) * 40, vy: -30 - Math.random() * 30,
+              life: 0.7, maxLife: 0.7, size: 2 + Math.random() * 2, color: 'sparkle',
+            })
+          }
+          break
+        case 'jim_token':
+          levelJim.value++; score.value += 50
+          spawnParticles(item.x, item.y, 10, '#E84393', 60)
+          break
+        case 'dalmatiner':
+          levelDal.value++; score.value += 100
+          spawnParticles(item.x, item.y, 12, '#FFFFFF', 70)
+          break
+        case 'powerup_big':
+          playerPower = 'big'; powerTimer = 999
+          spawnParticles(item.x, item.y, 10, '#FF2222', 60)
+          setLarsMood('victory', 1.5)
+          break
       }
     }
+  }
+
+  // === ENEMY PROXIMITY → SCARED MOOD ===
+  // Only override if not currently happy/victory (those take priority briefly).
+  if (larsMood === 'normal' || larsMood === 'scared') {
+    let nearEnemy = false
+    for (const e of enemies) {
+      if (!e.alive) continue
+      const dx = (e.x + e.w / 2) - (px + pw / 2)
+      const dy = (e.y + e.h / 2) - (py + ph / 2)
+      if (Math.abs(dx) < 70 && Math.abs(dy) < 80) { nearEnemy = true; break }
+    }
+    if (nearEnemy) { larsMood = 'scared'; larsMoodTimer = 0.15 }
+    else if (larsMood === 'scared' && larsMoodTimer <= 0) larsMood = 'normal'
   }
 
   // === JIM COMPANION AI (Level 2+) ===
@@ -895,11 +1624,32 @@ function update(dt: number) {
     if (!jimOnGround && jimY > py + 50) { jimVy = JUMP_FORCE * 0.9 }
     if (jimY > H + 100) { jimY = py - 30; jimVy = 0 } // Teleport if falls too far
 
-    // Random one-liners
+    // Evil intensity grows through Levels 4–5 (Loke foreshadowing)
+    if (currentLevel.value === 4) jimEvilIntensity = Math.min(0.6, jimEvilIntensity + dt * 0.015)
+    else if (currentLevel.value === 5) jimEvilIntensity = Math.min(1, jimEvilIntensity + dt * 0.03)
+
+    // Mood timer
+    if (jimMoodTimer > 0) {
+      jimMoodTimer -= dt
+      if (jimMoodTimer <= 0) jimMood = 'normal'
+    }
+
+    // Random one-liners — per level
     jimCommentTimer -= dt
     if (jimCommentTimer <= 0 && Math.random() < 0.01) {
-      jimComment = JIM_ONELINERS_L2[Math.floor(Math.random() * JIM_ONELINERS_L2.length)]
+      const pool = currentLevel.value === 1 ? JIM_ONELINERS_L1
+        : currentLevel.value === 3 ? JIM_ONELINERS_L3
+        : currentLevel.value === 4 ? JIM_ONELINERS_L4
+        : currentLevel.value === 6 ? JIM_ONELINERS_L6
+        : JIM_ONELINERS_L2
+      jimComment = pool[Math.floor(Math.random() * pool.length)]
       jimCommentTimer = 5 + Math.random() * 8
+    }
+    // Micro-laughs interspersed (especially when evil)
+    if (jimCommentTimer <= -1 && Math.random() < 0.005 + jimEvilIntensity * 0.02) {
+      jimComment = JIM_LAUGHS[Math.floor(Math.random() * JIM_LAUGHS.length)]
+      jimCommentTimer = 1.5
+      setJimMood('laughing', 1.2)
     }
     if (jimCommentTimer <= -2) jimComment = '' // Clear after 2s
 
@@ -909,17 +1659,29 @@ function update(dt: number) {
       if (jimPrankTimer <= 0) { jimPrankActive = '' }
     }
 
+    // ---- LEVEL 1: Swap prank (arrow keys invert) at x~1400 ----
+    if (currentLevel.value === 1 && !jimTriggeredSwapL1 && px > 1380 && px < 1420 && !jimPrankActive) {
+      jimPrankActive = 'swap'; jimPrankTimer = 4
+      jimComment = 'Undskyld. Venstre er højre nu.'
+      jimCommentTimer = 4
+      setJimMood('laughing', 2)
+      jimTriggeredSwapL1 = true
+    }
+
+    // ---- LEVEL 2: existing pranks ----
     // Drunk prank at x~700
     if (px > 680 && px < 720 && !jimPrankActive && currentLevel.value === 2) {
       jimPrankActive = 'drunk'; jimPrankTimer = 5
       jimComment = 'Skål, Lars! Drik!'
       jimCommentTimer = 5
+      setJimMood('laughing', 2)
     }
     // Heavy stone prank at x~1800 (treetops)
     if (px > 1780 && px < 1820 && !jimPrankActive && currentLevel.value === 2 && jimPrankTimer <= 0) {
       jimPrankActive = 'heavy'; jimPrankTimer = 8
       jimComment = 'Ups! En sten i bukserne!'
       jimCommentTimer = 5
+      setJimMood('pointing', 1.5)
     }
     // Dalmatiner sidequest at x~2200
     if (px > 2180 && px < 2220 && !dalmatinerActive && !dalmatinerCaught && currentLevel.value === 2) {
@@ -927,6 +1689,25 @@ function update(dt: number) {
       dalmatinerX = px + 100; dalmatinerY = py - 20; dalmatinerVx = 80
       jimComment = 'MIN HUND! Fang den, Lars!'
       jimCommentTimer = 6
+      setJimMood('pointing', 3)
+    }
+
+    // ---- LEVEL 3: Wind prank (double wind) at x~2000 ----
+    if (currentLevel.value === 3 && !jimTriggeredWindL3 && px > 1980 && px < 2020 && !jimPrankActive) {
+      jimPrankActive = 'wind'; jimPrankTimer = 3
+      jimComment = 'Mærk stormen, Lars!'
+      jimCommentTimer = 3
+      setJimMood('pointing', 2)
+      jimTriggeredWindL3 = true
+    }
+
+    // ---- LEVEL 4: Extra fire prank at x~1500 ----
+    if (currentLevel.value === 4 && !jimTriggeredFireL4 && px > 1480 && px < 1520 && !jimPrankActive) {
+      jimPrankActive = 'fire'; jimPrankTimer = 4
+      jimComment = 'Jeg har tændt lidt ekstra for dig.'
+      jimCommentTimer = 4
+      setJimMood('evil', 4)
+      jimTriggeredFireL4 = true
     }
 
     // Jim foreshadowing: his shadow is wrong (drawn in render)
@@ -966,9 +1747,21 @@ function update(dt: number) {
   const bossAlive = enemies.some(e => (e.type === 'boss' || e.type === 'boss_deer' || e.type === 'boss_berserker' || e.type === 'boss_fire') && e.alive)
   if (!goalReached && px + pw > goalX && px < goalX + 60) {
     if (bossAlive) {
-      // Can't finish - boss is still alive!
-      showRequirements = true; requirementTimer = 3
-      px = goalX - pw - 10
+      // Can't finish - boss is still alive! Push Lars back firmly
+      px = goalX - pw - 30 // Push back further to avoid re-trigger
+      pvx = -100 // Bounce back
+      if (jimCommentTimer <= 0) {
+        jimComment = 'Bossen lever stadig, Lars!'
+        jimCommentTimer = 3
+      }
+    } else if (levelOl.value < OL_REQ[currentLevel.value - 1]) {
+      // Not enough items
+      px = goalX - pw - 30
+      pvx = -100
+      if (jimCommentTimer <= 0) {
+        jimComment = 'Saml flere \u00f8l f\u00f8rst!'
+        jimCommentTimer = 3
+      }
     } else if (levelOl.value >= OL_REQ[currentLevel.value - 1]) {
       goalReached = true
       setTimeout(() => {
@@ -1042,6 +1835,9 @@ function updateBoss(e: Enemy, dt: number) {
     if (pvy > 0 && py + ph < e.y + 15) {
       e.hp--; pvy = -350; invTimer = 0.5
       spawnParticles(e.x + e.w / 2, e.y, 15, '#FF4444', 100)
+      // Juice: screen shake + brief hit-stop on every boss-hit
+      triggerShake(4)
+      hitStopTimer = 0.06
 
       if (e.hp <= 0) {
         // DRAUGR RESURRECTION: comes back twice with less HP!
@@ -1058,11 +1854,25 @@ function updateBoss(e: Enemy, dt: number) {
           jimComment = e.phase === 2 ? 'Han rejser sig IGEN?!' : 'TREDJE GANG! NU skal han dø!'
           jimCommentTimer = 4
         } else {
-          // Actually dead
+          // Actually dead — MAX JUICE
           e.alive = false
           gameState.value = 'playing'
           spawnParticles(e.x + e.w / 2, e.y + e.h / 2, 40, '#8B2020', 180)
+          // Extra golden victory particles
+          for (let vp = 0; vp < 24; vp++) {
+            particles.push({
+              x: e.x + e.w / 2, y: e.y + e.h / 2,
+              vx: (Math.random() - 0.5) * 260, vy: (Math.random() - 0.5) * 260 - 40,
+              life: 1.2 + Math.random() * 0.6, maxLife: 1.2, size: 2 + Math.random() * 3, color: 'gold_burst',
+            })
+          }
           score.value += 500 + (e.type === 'boss_berserker' ? 500 : 0)
+          // MASSIVE shake + hit-stop for boss kill
+          triggerShake(12)
+          hitStopTimer = 0.15
+          // Lars celebrates!
+          setLarsMood('victory', 2.5)
+          larsBounceTimer = 0.6
         }
       } else {
         if (e.hp <= 3) e.phase = Math.max(e.phase, 2)
@@ -1081,11 +1891,16 @@ let deathQuote = ''
 
 function takeDamage() {
   if (invTimer > 0) return
+  // Screen shake on every hit
+  triggerShake(6)
+  setLarsMood('scared', 0.4)
   if (playerPower === 'big') { playerPower = 'none'; invTimer = 2; return }
   lives.value--; invTimer = 2
   if (lives.value <= 0) {
+    maybeSaveHighscore()
     gameState.value = 'dead'
     deadDelay = 1.5
+    triggerShake(15) // big death shake
     // Pick ONE death quote and lock it
     const quotes = jimData.level1.death
     deathQuote = quotes[Math.floor(Math.random() * quotes.length)]
@@ -1106,7 +1921,9 @@ function render() {
   const lvlBg = currentLevel.value === 1 ? '#0A0F0A'
     : currentLevel.value === 2 ? '#060F06'
     : currentLevel.value === 3 ? '#0A0A14'
-    : currentLevel.value === 4 ? '#140A05' // Warm dark ember
+    : currentLevel.value === 4 ? '#140A05'
+    : currentLevel.value === 5 ? '#2A0A12'
+    : currentLevel.value === 6 ? '#1A1208' // Warm dark gold
     : '#0A0F0A'
   c.fillStyle = lvlBg; c.fillRect(0, 0, W, H)
 
@@ -1118,7 +1935,12 @@ function render() {
   } else {
     // Fallback gradient per level
     const skyGrad = c.createLinearGradient(0, 0, 0, H)
-    if (currentLevel.value === 4) {
+    if (currentLevel.value === 6) {
+      // Warm golden Valhalla
+      skyGrad.addColorStop(0, '#1A1208'); skyGrad.addColorStop(0.3, '#2A1A0A'); skyGrad.addColorStop(0.6, '#1A1008'); skyGrad.addColorStop(1, '#0A0804')
+    } else if (currentLevel.value === 5) {
+      skyGrad.addColorStop(0, '#2A0A10'); skyGrad.addColorStop(0.3, '#3A1018'); skyGrad.addColorStop(0.6, '#4A1525'); skyGrad.addColorStop(1, '#1A0508')
+    } else if (currentLevel.value === 4) {
       skyGrad.addColorStop(0, '#1A0A05'); skyGrad.addColorStop(0.3, '#2A1008'); skyGrad.addColorStop(0.7, '#1A0805'); skyGrad.addColorStop(1, '#0A0502')
     } else if (currentLevel.value === 3) {
       skyGrad.addColorStop(0, '#0A0A1A'); skyGrad.addColorStop(0.4, '#1A1A2A'); skyGrad.addColorStop(1, '#0A1020')
@@ -1168,7 +1990,7 @@ function render() {
   // Mid layer
   if (bgMid.value) {
     const midX = -(cameraX * 0.3) % W
-    c.globalAlpha = 0.7
+    c.globalAlpha = currentLevel.value === 5 ? 0.9 : 0.7
     c.drawImage(bgMid.value, midX, 0, W, H)
     c.drawImage(bgMid.value, midX + W, 0, W, H)
     c.globalAlpha = 1
@@ -1179,8 +2001,41 @@ function render() {
     c.globalAlpha = 0.08; c.fillStyle = '#2233AA'; c.fillRect(0, 0, W, H); c.globalAlpha = 1
   } else if (currentLevel.value === 2) {
     c.globalAlpha = 0.05; c.fillStyle = '#115511'; c.fillRect(0, 0, W, H); c.globalAlpha = 1
+  } else if (currentLevel.value === 6 && gameState.value !== 'loading') {
+    // Warm golden Valhalla tint
+    c.globalAlpha = 0.06; c.fillStyle = '#C9A84C'; c.fillRect(0, 0, W, H); c.globalAlpha = 1
+    // Warm glow from bottom (fire pits)
+    const warmGrad = c.createLinearGradient(0, H - 80, 0, H)
+    warmGrad.addColorStop(0, 'transparent'); warmGrad.addColorStop(1, 'rgba(200, 100, 20, 0.1)')
+    c.fillStyle = warmGrad; c.fillRect(0, H - 80, W, 80)
+    // Reveal red glow (increases during reveal)
+    if (revealProgress > 0) {
+      c.globalAlpha = revealProgress * 0.15; c.fillStyle = '#AA1030'; c.fillRect(0, 0, W, H); c.globalAlpha = 1
+    }
+  } else if (currentLevel.value === 5 && gameState.value !== 'loading') {
+    // DEEP RED tint - only during gameplay, NOT on loading screen
+    c.globalAlpha = 0.1; c.fillStyle = '#AA1030'; c.fillRect(0, 0, W, H); c.globalAlpha = 1
+    // Red blood ocean
+    const redOcean = c.createLinearGradient(0, H - 70, 0, H)
+    redOcean.addColorStop(0, 'rgba(60, 10, 15, 0.5)')
+    redOcean.addColorStop(0.3, 'rgba(80, 15, 20, 0.7)')
+    redOcean.addColorStop(1, 'rgba(40, 5, 10, 0.9)')
+    c.fillStyle = redOcean; c.fillRect(0, H - 70, W, 70)
+    // Red waves
+    c.strokeStyle = 'rgba(150, 40, 50, 0.2)'; c.lineWidth = 1.5
+    for (let wv = 0; wv < W; wv += 35) {
+      const wy = H - 40 + Math.sin(time.value * 1.5 + wv * 0.04) * 6
+      c.beginPath(); c.moveTo(wv, wy); c.quadraticCurveTo(wv + 17, wy - 5, wv + 35, wy); c.stroke()
+    }
+    // Red moon
+    c.globalAlpha = 0.15
+    c.fillStyle = '#AA2040'
+    c.beginPath(); c.arc(W * 0.7, H * 0.15, 30, 0, Math.PI * 2); c.fill()
+    c.globalAlpha = 0.05
+    c.fillStyle = '#FF3050'
+    c.beginPath(); c.arc(W * 0.7, H * 0.15, 60, 0, Math.PI * 2); c.fill()
+    c.globalAlpha = 1
   } else if (currentLevel.value === 4) {
-    // Warm fire tint - orange/red
     c.globalAlpha = 0.06; c.fillStyle = '#AA3300'; c.fillRect(0, 0, W, H); c.globalAlpha = 1
     // Bottom heat glow
     const heatGrad = c.createLinearGradient(0, H - 80, 0, H)
@@ -1191,8 +2046,17 @@ function render() {
   // Near layer (foreground overlay - drawn after gameplay)
   // (rendered at end)
 
+  // === WORLD TRANSFORM (camera + zoom + shake) ===
+  // Everything drawn between this c.save() and the matching c.restore() is in
+  // world-space, scaled by WORLD_ZOOM. Lars, enemies, platforms, items, Jim,
+  // and world particles are all inside this block.
   c.save()
-  c.translate(-cameraX, 0)
+  // Screen-shake: random offset in screen pixels (applied before zoom transform)
+  const sx = shakeAmt > 0 ? (Math.random() - 0.5) * shakeAmt : 0
+  const sy = shakeAmt > 0 ? (Math.random() - 0.5) * shakeAmt : 0
+  c.translate(sx, sy)
+  c.translate(-cameraX * WORLD_ZOOM, -cameraY * WORLD_ZOOM)
+  c.scale(WORLD_ZOOM, WORLD_ZOOM)
 
   // === LEVEL 2 LIGHT SHAFTS (before platforms) ===
   if (currentLevel.value === 2) {
@@ -1386,6 +2250,8 @@ function render() {
       for (let bx = p.x + 6; bx < p.x + p.w - 6; bx += 10) {
         c.beginPath(); c.arc(bx, p.y + p.h / 2, 3, 0, Math.PI * 2); c.fill()
       }
+    } else if (p.type === 'boat') {
+      // Rendered separately in LEVEL 5 BOAT RENDERING section
     } else if (p.type === 'mud') {
       // Level 1 mud
       const mudGrad = c.createLinearGradient(p.x, p.y, p.x, p.y + p.h)
@@ -1457,28 +2323,51 @@ function render() {
     if (e.x < cameraX - 60 || e.x > cameraX + W + 60) continue
 
     if (e.type === 'guard') {
-      // Fangevogter
-      c.fillStyle = '#4A3A2A'; c.beginPath(); c.roundRect(e.x + 3, e.y + 12, 19, 23, 2); c.fill()
-      c.fillStyle = '#6A5040'; c.beginPath(); c.arc(e.x + 12, e.y + 8, 8, 0, Math.PI * 2); c.fill()
-      // Leather helmet
-      c.fillStyle = '#3A2A1A'; c.fillRect(e.x + 4, e.y + 1, 16, 8)
-      // Eyes (menacing)
-      c.fillStyle = '#AA3333'; c.beginPath(); c.arc(e.x + 9, e.y + 7, 1.5, 0, Math.PI * 2); c.fill()
-      c.beginPath(); c.arc(e.x + 15, e.y + 7, 1.5, 0, Math.PI * 2); c.fill()
-      // Weapon
-      c.strokeStyle = '#666'; c.lineWidth = 2; c.beginPath()
-      c.moveTo(e.x + (e.dir > 0 ? 20 : 4), e.y + 10)
-      c.lineTo(e.x + (e.dir > 0 ? 30 : -6), e.y + 2); c.stroke()
+      // MOSE-DRAUGER: algegrøn vandlig krop
+      const sink = Math.sin(time.value * 2 + e.x * 0.01) * 1.5
+      // Drip
+      if (Math.random() < 0.05) {
+        particles.push({ x: e.x + 12, y: e.y + 22, vx: (Math.random() - 0.5) * 5, vy: 30, life: 0.8, maxLife: 0.8, size: 1.5, color: '#3A5A3A' })
+      }
+      // Body
+      c.fillStyle = '#3A5A3A'; c.beginPath(); c.roundRect(e.x + 3, e.y + 12 + sink, 19, 23, 2); c.fill()
+      // Algae streaks
+      c.fillStyle = '#2A4A2A'; c.fillRect(e.x + 5, e.y + 14 + sink, 2, 18)
+      c.fillRect(e.x + 12, e.y + 16 + sink, 1.5, 14)
+      c.fillRect(e.x + 18, e.y + 13 + sink, 1.5, 16)
+      // Wet face
+      c.fillStyle = '#5A7A5A'; c.beginPath(); c.arc(e.x + 12, e.y + 8 + sink, 8, 0, Math.PI * 2); c.fill()
+      // Mose-tang on top of head
+      c.fillStyle = '#1A3A1A'
+      c.beginPath(); c.moveTo(e.x + 4, e.y + 4 + sink); c.lineTo(e.x + 8, e.y - 2 + sink); c.lineTo(e.x + 12, e.y + 4 + sink); c.lineTo(e.x + 16, e.y - 1 + sink); c.lineTo(e.x + 20, e.y + 4 + sink); c.fill()
+      // Glowing yellow eyes (drowned)
+      c.fillStyle = '#CCFF44'; c.beginPath(); c.arc(e.x + 9, e.y + 7 + sink, 1.5, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(e.x + 15, e.y + 7 + sink, 1.5, 0, Math.PI * 2); c.fill()
+      // Rusty bog spear
+      c.strokeStyle = '#6A5A3A'; c.lineWidth = 2; c.beginPath()
+      c.moveTo(e.x + (e.dir > 0 ? 20 : 4), e.y + 10 + sink)
+      c.lineTo(e.x + (e.dir > 0 ? 30 : -6), e.y + 2 + sink); c.stroke()
     } else if (e.type === 'wolf') {
-      // Wolf silhouette
-      c.fillStyle = '#3A3A3A'
+      // FENRIS-HVALP: lille ulv med dalmatinermønster (Jim-Lyngvild ref)
+      c.fillStyle = '#F8F4EC'
       c.beginPath(); c.ellipse(e.x + 15, e.y + 14, 15, 10, 0, 0, Math.PI * 2); c.fill()
       c.beginPath(); c.arc(e.x + (e.dir > 0 ? 28 : 2), e.y + 8, 7, 0, Math.PI * 2); c.fill()
-      // Eyes
-      c.fillStyle = '#FFAA00'
+      // Dalmatian spots (Jim's signature)
+      c.fillStyle = '#1A1A1A'
+      c.beginPath(); c.arc(e.x + 8, e.y + 12, 2, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(e.x + 18, e.y + 16, 1.6, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(e.x + 12, e.y + 18, 1.4, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(e.x + 22, e.y + 12, 1.8, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(e.x + (e.dir > 0 ? 27 : 3), e.y + 11, 1.2, 0, Math.PI * 2); c.fill()
+      // Cold blue eyes
+      c.fillStyle = '#6AACDB'
       c.beginPath(); c.arc(e.x + (e.dir > 0 ? 30 : 4), e.y + 6, 2, 0, Math.PI * 2); c.fill()
+      // Ears
+      c.fillStyle = '#F8F4EC'
+      c.beginPath(); c.moveTo(e.x + (e.dir > 0 ? 26 : 4), e.y + 2)
+      c.lineTo(e.x + (e.dir > 0 ? 30 : 0), e.y - 2); c.lineTo(e.x + (e.dir > 0 ? 30 : 0), e.y + 4); c.fill()
       // Legs
-      c.strokeStyle = '#3A3A3A'; c.lineWidth = 3
+      c.strokeStyle = '#F8F4EC'; c.lineWidth = 3
       const legOff = Math.sin(time.value * 8) * 3
       c.beginPath(); c.moveTo(e.x + 8, e.y + 22); c.lineTo(e.x + 8, e.y + 25 + legOff); c.stroke()
       c.beginPath(); c.moveTo(e.x + 22, e.y + 22); c.lineTo(e.x + 22, e.y + 25 - legOff); c.stroke()
@@ -1514,6 +2403,14 @@ function render() {
       c.lineTo(e.x + 65 + bossShake, e.y - 15)
       c.lineTo(e.x + 60 + bossShake, e.y + 5)
       c.closePath(); c.fill()
+      // Porsche emblem engraved on axe head (subtle Easter egg)
+      c.save()
+      c.translate(e.x + 58 + bossShake, e.y - 5)
+      c.fillStyle = '#3A2A1A'
+      c.beginPath(); c.arc(0, 0, 2.2, 0, Math.PI * 2); c.fill()
+      c.strokeStyle = '#444'; c.lineWidth = 0.4
+      c.beginPath(); c.moveTo(-2, 0); c.lineTo(2, 0); c.moveTo(0, -2); c.lineTo(0, 2); c.stroke()
+      c.restore()
 
       // Projectile (thrown axe)
       if (e.projectileActive) {
@@ -1540,24 +2437,33 @@ function render() {
       c.beginPath(); c.arc(e.x + 15, e.y + 4, 1.5, 0, Math.PI * 2); c.fill()
       c.globalAlpha = 1
     } else if (e.type === 'raven') {
-      // Raven - flying, flapping wings
+      // HUGINN-KRAGE: sort/sølv krage med røde Celtic-tegn på vingerne (Jim-tattoo ref)
       const flapY = Math.sin(time.value * 10) * 3
       c.fillStyle = '#1A1A1A'
       c.beginPath(); c.ellipse(e.x + 10, e.y + 8 + flapY, 10, 5, 0, 0, Math.PI * 2); c.fill()
+      // Silver streak on body
+      c.fillStyle = '#999'
+      c.fillRect(e.x + 6, e.y + 9 + flapY, 8, 1)
       // Wings
       const wingAngle = Math.sin(time.value * 12) * 0.5
       c.save(); c.translate(e.x + 10, e.y + 6 + flapY); c.rotate(wingAngle)
       c.fillStyle = '#222'; c.beginPath(); c.moveTo(0, 0); c.lineTo(-14, -6); c.lineTo(-4, 2); c.fill()
+      // Red celtic rune on left wing (Jim tattoo style)
+      c.strokeStyle = '#9E3030'; c.lineWidth = 0.7
+      c.beginPath(); c.moveTo(-10, -3); c.lineTo(-6, -1); c.moveTo(-8, -4); c.lineTo(-7, -2); c.stroke()
       c.restore()
       c.save(); c.translate(e.x + 10, e.y + 6 + flapY); c.rotate(-wingAngle)
       c.fillStyle = '#222'; c.beginPath(); c.moveTo(0, 0); c.lineTo(14, -6); c.lineTo(4, 2); c.fill()
+      // Red celtic rune on right wing
+      c.strokeStyle = '#9E3030'; c.lineWidth = 0.7
+      c.beginPath(); c.moveTo(10, -3); c.lineTo(6, -1); c.moveTo(8, -4); c.lineTo(7, -2); c.stroke()
       c.restore()
       // Beak
       c.fillStyle = '#8B6914'
       c.beginPath(); c.moveTo(e.x + (e.dir > 0 ? 20 : 0), e.y + 8 + flapY)
       c.lineTo(e.x + (e.dir > 0 ? 24 : -4), e.y + 9 + flapY); c.lineTo(e.x + (e.dir > 0 ? 20 : 0), e.y + 10 + flapY); c.fill()
-      // Eye
-      c.fillStyle = '#CC2020'; c.beginPath(); c.arc(e.x + (e.dir > 0 ? 16 : 4), e.y + 6 + flapY, 1, 0, Math.PI * 2); c.fill()
+      // Glowing red eye
+      c.fillStyle = '#FF3333'; c.beginPath(); c.arc(e.x + (e.dir > 0 ? 16 : 4), e.y + 6 + flapY, 1.2, 0, Math.PI * 2); c.fill()
     } else if (e.type === 'spider') {
       // Spider - dark, creepy
       c.fillStyle = '#2A2A1A'; c.beginPath(); c.ellipse(e.x + 14, e.y + 12, 12, 8, 0, 0, Math.PI * 2); c.fill()
@@ -1606,6 +2512,19 @@ function render() {
       c.lineTo(e.x + 46 + deerShake, e.y - 20); c.stroke()
       c.beginPath(); c.moveTo(e.x + 39 + deerShake, e.y - 15)
       c.lineTo(e.x + 49 + deerShake, e.y - 12); c.stroke()
+      // RED RUNES carved into antlers (Jim-tattoo style, pulsing)
+      const runeGlow = 0.6 + Math.sin(time.value * 3) * 0.4
+      c.fillStyle = `rgba(200, 40, 40, ${runeGlow})`
+      c.beginPath(); c.arc(e.x - 5 + deerShake, e.y - 10, 1.2, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(e.x - 12 + deerShake, e.y - 18, 1.2, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(e.x + 40 + deerShake, e.y - 18, 1.2, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(e.x + 47 + deerShake, e.y - 12, 1.2, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(e.x - 2 + deerShake, e.y - 6, 1, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(e.x + 36 + deerShake, e.y - 8, 1, 0, Math.PI * 2); c.fill()
+      // Tiny rune lines between dots
+      c.strokeStyle = `rgba(200, 40, 40, ${runeGlow * 0.6})`; c.lineWidth = 0.7
+      c.beginPath(); c.moveTo(e.x - 5 + deerShake, e.y - 10); c.lineTo(e.x - 12 + deerShake, e.y - 18); c.stroke()
+      c.beginPath(); c.moveTo(e.x + 40 + deerShake, e.y - 18); c.lineTo(e.x + 47 + deerShake, e.y - 12); c.stroke()
       // Eyes (glowing green)
       c.fillStyle = '#44AA44'
       c.beginPath(); c.arc(e.x + 13 + deerShake, e.y + 8, 2, 0, Math.PI * 2); c.fill()
@@ -1618,13 +2537,26 @@ function render() {
 
       // HP BAR (drawn in HUD section)
     } else if (e.type === 'skeleton') {
-      // Fallen warrior skeleton - grey/bone
+      // EINHERJER-SKELET - faldne kriger med viking-hjelm + lille rundt skjold m. Porsche-emblem
       c.fillStyle = '#6A6A5A'; c.beginPath(); c.roundRect(e.x + 3, e.y + 10, 19, 25, 2); c.fill()
       c.fillStyle = '#8A8A7A'; c.beginPath(); c.arc(e.x + 12, e.y + 6, 8, 0, Math.PI * 2); c.fill()
+      // Viking helmet (small horns)
+      c.fillStyle = '#5A5040'
+      c.beginPath(); c.roundRect(e.x + 4, e.y - 1, 16, 7, 3); c.fill()
+      c.beginPath(); c.moveTo(e.x + 4, e.y); c.lineTo(e.x + 1, e.y - 5); c.lineTo(e.x + 6, e.y - 1); c.fill()
+      c.beginPath(); c.moveTo(e.x + 20, e.y); c.lineTo(e.x + 23, e.y - 5); c.lineTo(e.x + 18, e.y - 1); c.fill()
       // Empty eye sockets
       c.fillStyle = '#2A0A0A'
       c.beginPath(); c.arc(e.x + 9, e.y + 5, 2, 0, Math.PI * 2); c.fill()
       c.beginPath(); c.arc(e.x + 15, e.y + 5, 2, 0, Math.PI * 2); c.fill()
+      // Round shield with PORSCHE emblem (subtle Easter egg)
+      const shX = e.x + (e.dir > 0 ? -2 : 24)
+      c.fillStyle = '#5A4A3A'; c.beginPath(); c.arc(shX, e.y + 18, 6, 0, Math.PI * 2); c.fill()
+      c.strokeStyle = '#8A7060'; c.lineWidth = 0.6; c.beginPath(); c.arc(shX, e.y + 18, 6, 0, Math.PI * 2); c.stroke()
+      // Porsche-style crest in middle (gold + cross)
+      c.fillStyle = '#D4A574'; c.beginPath(); c.arc(shX, e.y + 18, 2.2, 0, Math.PI * 2); c.fill()
+      c.strokeStyle = '#3A2A1A'; c.lineWidth = 0.5
+      c.beginPath(); c.moveTo(shX - 2, e.y + 18); c.lineTo(shX + 2, e.y + 18); c.moveTo(shX, e.y + 16); c.lineTo(shX, e.y + 20); c.stroke()
       // Rusty sword
       c.strokeStyle = '#8A7060'; c.lineWidth = 2
       c.beginPath(); c.moveTo(e.x + (e.dir > 0 ? 20 : 4), e.y + 12)
@@ -1662,6 +2594,15 @@ function render() {
 
       // Massive body
       c.fillStyle = '#3A2020'; c.beginPath(); c.roundRect(e.x + 5 + bShake, e.y + 18, 40, 42, 4); c.fill()
+      // DALMATIAN PATTERN on armor (Jim-Lyngvild ref — white bone fragments on dark armor)
+      c.fillStyle = '#F0E8DC'
+      c.beginPath(); c.arc(e.x + 12 + bShake, e.y + 24, 2.2, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(e.x + 22 + bShake, e.y + 30, 1.8, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(e.x + 32 + bShake, e.y + 26, 2, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(e.x + 16 + bShake, e.y + 38, 1.6, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(e.x + 28 + bShake, e.y + 42, 2.2, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(e.x + 38 + bShake, e.y + 36, 1.8, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(e.x + 20 + bShake, e.y + 50, 1.4, 0, Math.PI * 2); c.fill()
       // Fur cloak
       c.fillStyle = '#4A3020'
       c.beginPath(); c.moveTo(e.x + bShake, e.y + 20); c.lineTo(e.x + 5 + bShake, e.y + 58)
@@ -1726,10 +2667,21 @@ function render() {
       c.fillStyle = '#FF6600'; c.beginPath(); c.arc(e.x + 9, e.y + 4, 1, 0, Math.PI * 2); c.fill()
       c.beginPath(); c.arc(e.x + 15, e.y + 4, 1, 0, Math.PI * 2); c.fill()
     } else if (e.type === 'fire_wolf') {
-      // Burning wolf
+      // ILD-ULV - brændende ulv med SKALDET hoved + Celtic-tattoo (Jim-Lyngvild ulven)
       c.fillStyle = '#3A2010'
       c.beginPath(); c.ellipse(e.x + 15, e.y + 14, 15, 10, 0, 0, Math.PI * 2); c.fill()
+      // Bald head (pink/tan, no fur) — Jim's shaved head on a wolf body
+      c.fillStyle = '#C08060'
       c.beginPath(); c.arc(e.x + (e.dir > 0 ? 28 : 2), e.y + 8, 7, 0, Math.PI * 2); c.fill()
+      // Head shine highlight (bald)
+      c.fillStyle = '#E0A080'
+      c.beginPath(); c.arc(e.x + (e.dir > 0 ? 26 : 4), e.y + 5, 2.5, 0, Math.PI * 2); c.fill()
+      // Celtic tattoo on bald forehead (Jim's signature)
+      c.strokeStyle = '#9E3030'; c.lineWidth = 0.8
+      const tx = e.x + (e.dir > 0 ? 28 : 2)
+      c.beginPath(); c.moveTo(tx - 3, e.y + 3); c.quadraticCurveTo(tx, e.y - 1, tx + 3, e.y + 3); c.stroke()
+      c.fillStyle = '#9E3030'; c.beginPath(); c.arc(tx, e.y + 1, 0.7, 0, Math.PI * 2); c.fill()
+      // Glowing orange eyes
       c.fillStyle = '#FF4400'; c.beginPath(); c.arc(e.x + (e.dir > 0 ? 30 : 4), e.y + 6, 2, 0, Math.PI * 2); c.fill()
       // Fire aura
       const wolfGlow = c.createRadialGradient(e.x + 15, e.y + 10, 0, e.x + 15, e.y + 10, 20)
@@ -1750,13 +2702,21 @@ function render() {
       c.fillStyle = '#3A0808'; c.beginPath(); c.roundRect(e.x + 8 + fShake, e.y + 12, 24, 30, 3); c.fill()
       // Head with crown of fire
       c.fillStyle = '#7A5040'; c.beginPath(); c.arc(e.x + 20 + fShake, e.y + 8, 10, 0, Math.PI * 2); c.fill()
-      // Fire crown
+      // Fire crown — 5 horns shaped in a PORSCHE 911 silhouette (stylized)
+      // Heights follow a 911-roofline: low-high-peak-high-low
+      const crownHeights = [4, 8, 10, 8, 4]
       for (let fc = 0; fc < 5; fc++) {
         const fcX = e.x + 12 + fc * 4 + fShake
-        const fcH = 6 + Math.sin(time.value * 8 + fc * 2) * 3
+        const fcH = crownHeights[fc] + Math.sin(time.value * 8 + fc * 2) * 2
         c.fillStyle = '#FF4400'; c.beginPath(); c.arc(fcX, e.y - fcH, 3, 0, Math.PI * 2); c.fill()
         c.fillStyle = '#FFAA00'; c.beginPath(); c.arc(fcX, e.y - fcH - 2, 1.5, 0, Math.PI * 2); c.fill()
       }
+      // Connecting line (roofline silhouette — the Porsche curve)
+      c.strokeStyle = 'rgba(255, 100, 0, 0.4)'; c.lineWidth = 1
+      c.beginPath()
+      c.moveTo(e.x + 12 + fShake, e.y - 4)
+      c.quadraticCurveTo(e.x + 20 + fShake, e.y - 14, e.x + 28 + fShake, e.y - 4)
+      c.stroke()
       // Glowing red eyes
       c.fillStyle = '#FF2200'
       c.beginPath(); c.arc(e.x + 16 + fShake, e.y + 7, 2, 0, Math.PI * 2); c.fill()
@@ -1773,6 +2733,209 @@ function render() {
     }
   }
 
+  // === LEVEL 5: BOAT (paddle) + ODIN BALL RENDERING (only during gameplay) ===
+  if (currentLevel.value === 5 && gameState.value !== 'loading' && gameState.value !== 'cutscene') {
+    const bx = boatX // Uses actual paddle position
+    const bw = 240 // Bigger boat/paddle
+    const by = boatY + boatRock
+    // Water shadow
+    c.globalAlpha = 0.2; c.fillStyle = '#3A0A10'
+    c.beginPath(); c.ellipse(bx + bw / 2, by + 22, bw * 0.6, 6, 0, 0, Math.PI * 2); c.fill()
+    c.globalAlpha = 1
+    // Hull
+    c.fillStyle = '#3A2010'
+    c.beginPath()
+    c.moveTo(bx - 15, by); c.quadraticCurveTo(bx + bw / 2, by + 25, bx + bw + 15, by)
+    c.lineTo(bx + bw + 5, by - 8); c.lineTo(bx - 5, by - 8); c.closePath(); c.fill()
+    // Strakes
+    c.strokeStyle = '#2A1508'; c.lineWidth = 0.8
+    c.beginPath(); c.moveTo(bx - 10, by + 5); c.quadraticCurveTo(bx + bw / 2, by + 18, bx + bw + 10, by + 5); c.stroke()
+    // Deck
+    c.fillStyle = '#4A3020'; c.fillRect(bx, by - 8, bw, 8)
+    c.strokeStyle = '#2A1808'; c.lineWidth = 0.5
+    for (let plk = bx + 10; plk < bx + bw - 5; plk += 14) { c.beginPath(); c.moveTo(plk, by - 8); c.lineTo(plk, by); c.stroke() }
+    // Dragon prow (right - sailing direction)
+    c.fillStyle = '#2A1508'
+    c.beginPath()
+    c.moveTo(bx + bw + 15, by - 5)
+    c.quadraticCurveTo(bx + bw + 30, by - 20, bx + bw + 25, by - 40)
+    c.quadraticCurveTo(bx + bw + 35, by - 45, bx + bw + 28, by - 50)
+    c.lineTo(bx + bw + 20, by - 35)
+    c.quadraticCurveTo(bx + bw + 18, by - 15, bx + bw + 10, by - 5)
+    c.fill()
+    c.fillStyle = '#CC2020'; c.beginPath(); c.arc(bx + bw + 26, by - 42, 2, 0, Math.PI * 2); c.fill()
+    // Stern
+    c.fillStyle = '#2A1508'
+    c.beginPath(); c.moveTo(bx - 15, by - 5); c.quadraticCurveTo(bx - 25, by - 15, bx - 20, by - 30)
+    c.lineTo(bx - 12, by - 20); c.lineTo(bx - 5, by - 8); c.fill()
+    // Mast + sail (tall!)
+    c.strokeStyle = '#3A2515'; c.lineWidth = 3
+    c.beginPath(); c.moveTo(bx + bw / 2, by - 8); c.lineTo(bx + bw / 2, by - 160); c.stroke()
+    // Sail - large red/dark cloth
+    c.fillStyle = 'rgba(100, 20, 20, 0.5)'
+    c.beginPath(); c.moveTo(bx + bw / 2 - 2, by - 155)
+    c.quadraticCurveTo(bx + bw / 2 + 50, by - 110, bx + bw / 2 + 55, by - 30)
+    c.lineTo(bx + bw / 2 - 2, by - 20); c.fill()
+    // Sail detail - horizontal stripes
+    c.strokeStyle = 'rgba(60, 10, 10, 0.3)'; c.lineWidth = 1
+    for (let sy = by - 140; sy < by - 30; sy += 25) {
+      c.beginPath(); c.moveTo(bx + bw / 2, sy); c.lineTo(bx + bw / 2 + 40, sy + 10); c.stroke()
+    }
+    // Shields
+    for (let sh = bx + 10; sh < bx + bw - 10; sh += 22) {
+      c.fillStyle = sh % 44 === 10 ? '#6A2020' : '#3A4A6A'
+      c.beginPath(); c.arc(sh, by + 3, 5, 0, Math.PI * 2); c.fill()
+      c.fillStyle = '#8B7355'; c.beginPath(); c.arc(sh, by + 3, 2, 0, Math.PI * 2); c.fill()
+    }
+  }
+
+  // === LEVEL 5: ODIN'S HEAD (only during gameplay) ===
+  if (currentLevel.value === 5 && gameState.value === 'playing' && jimPrankActive !== 'invisible_ball') {
+    // Odin's head - BIG, visible, glowing
+    const obx = odinBallX, oby = odinBallY
+    const R = 22 // Big ball!
+    // Trail
+    if (odinBallActive) {
+      c.globalAlpha = 0.12; c.fillStyle = '#F5A623'
+      c.beginPath(); c.arc(obx - odinBallVx * 0.03, oby - odinBallVy * 0.03, R + 4, 0, Math.PI * 2); c.fill()
+      c.globalAlpha = 1
+    }
+    // Glow
+    const oGlow = c.createRadialGradient(obx, oby, 0, obx, oby, R + 20)
+    oGlow.addColorStop(0, 'rgba(245, 166, 35, 0.25)'); oGlow.addColorStop(1, 'transparent')
+    c.fillStyle = oGlow; c.fillRect(obx - R - 20, oby - R - 20, (R + 20) * 2, (R + 20) * 2)
+    // Head/skull
+    c.fillStyle = '#E0C8A0'; c.beginPath(); c.arc(obx, oby, R, 0, Math.PI * 2); c.fill()
+    c.strokeStyle = '#C0A880'; c.lineWidth = 1.5; c.beginPath(); c.arc(obx, oby, R, 0, Math.PI * 2); c.stroke()
+    // ONE glowing golden eye (right)
+    c.fillStyle = '#F5A623'
+    c.beginPath(); c.arc(obx + 7, oby - 3, 5, 0, Math.PI * 2); c.fill()
+    c.fillStyle = '#1A1A1A'
+    c.beginPath(); c.arc(obx + 7, oby - 3, 2.5, 0, Math.PI * 2); c.fill()
+    // Eye glint
+    c.fillStyle = '#FFDD88'; c.beginPath(); c.arc(obx + 5, oby - 5, 1.5, 0, Math.PI * 2); c.fill()
+    // Eye patch (left)
+    c.fillStyle = '#2A1A0A'
+    c.beginPath(); c.arc(obx - 7, oby - 3, 6, 0, Math.PI * 2); c.fill()
+    c.strokeStyle = '#2A1A0A'; c.lineWidth = 2
+    c.beginPath(); c.moveTo(obx - 12, oby - 5); c.lineTo(obx - 16, oby - 14); c.stroke()
+    c.beginPath(); c.moveTo(obx - 2, oby - 7); c.lineTo(obx + 4, oby - 16); c.stroke()
+    // Nose
+    c.fillStyle = '#C0A880'
+    c.beginPath(); c.moveTo(obx, oby + 3); c.lineTo(obx - 3, oby + 8); c.lineTo(obx + 3, oby + 8); c.fill()
+    // Mouth (grim)
+    c.strokeStyle = '#8A7060'; c.lineWidth = 1.5
+    c.beginPath(); c.moveTo(obx - 6, oby + 11); c.lineTo(obx + 6, oby + 11); c.stroke()
+    // Helmet rim
+    c.strokeStyle = '#8B7355'; c.lineWidth = 3
+    c.beginPath(); c.arc(obx, oby - 5, R, Math.PI * 1.05, Math.PI * 1.95); c.stroke()
+    // Subtle Porsche-emblem on side of helmet (gravering, Easter egg)
+    c.save()
+    c.translate(obx - R * 0.55, oby - 8)
+    c.fillStyle = 'rgba(90, 70, 50, 0.5)'
+    c.beginPath(); c.arc(0, 0, 2, 0, Math.PI * 2); c.fill()
+    c.strokeStyle = 'rgba(201, 168, 76, 0.4)'; c.lineWidth = 0.5
+    c.beginPath(); c.moveTo(-1.5, 0); c.lineTo(1.5, 0); c.moveTo(0, -1.5); c.lineTo(0, 1.5); c.stroke()
+    c.restore()
+    // Horns (big, impressive!)
+    c.strokeStyle = '#A89070'; c.lineWidth = 3
+    c.beginPath(); c.moveTo(obx - R + 2, oby - 12); c.quadraticCurveTo(obx - R - 14, oby - 35, obx - R - 8, oby - 45); c.stroke()
+    c.beginPath(); c.moveTo(obx + R - 2, oby - 12); c.quadraticCurveTo(obx + R + 14, oby - 35, obx + R + 8, oby - 45); c.stroke()
+    // Horn tips
+    c.fillStyle = '#C9A84C'
+    c.beginPath(); c.arc(obx - R - 8, oby - 45, 2.5, 0, Math.PI * 2); c.fill()
+    c.beginPath(); c.arc(obx + R + 8, oby - 45, 2.5, 0, Math.PI * 2); c.fill()
+    // "SPACE" text when resting
+    if (!odinBallActive) {
+      c.fillStyle = 'rgba(245, 166, 35, 0.6)'; c.font = 'bold 10px "Space Grotesk"'; c.textAlign = 'center'
+      c.fillText('SPACE', obx, oby + R + 16)
+    }
+  }
+
+  // === LEVEL 5: Skull shots ===
+  if (currentLevel.value === 5 && gameState.value === 'playing') {
+    for (const shot of beerCans) {
+      if (!shot.alive) continue
+      // Glowing skull projectile
+      c.fillStyle = '#F5A623'; c.beginPath(); c.arc(shot.x, shot.y, 6, 0, Math.PI * 2); c.fill()
+      c.fillStyle = '#FFDD66'; c.beginPath(); c.arc(shot.x, shot.y, 3, 0, Math.PI * 2); c.fill()
+      // Trail
+      c.globalAlpha = 0.3; c.fillStyle = '#F5A623'
+      c.beginPath(); c.arc(shot.x, shot.y + 8, 4, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(shot.x, shot.y + 14, 2, 0, Math.PI * 2); c.fill()
+      c.globalAlpha = 1
+    }
+  }
+
+  // === LEVEL 5: Loke illusions (only during gameplay) ===
+  if (currentLevel.value === 5) {
+    // Fog obstacles
+    for (const ob of fogObstacles) {
+      if (ob.passed) continue
+      c.globalAlpha = 0.7
+      if (ob.type === 'wreck') {
+        c.fillStyle = '#3A2010'; c.beginPath(); c.roundRect(ob.x - 15, ob.y - 10, 30, 20, 3); c.fill()
+        c.strokeStyle = '#2A1508'; c.lineWidth = 1
+        c.beginPath(); c.moveTo(ob.x, ob.y - 10); c.lineTo(ob.x, ob.y - 30); c.stroke()
+        c.fillStyle = '#5A1520'; c.beginPath(); c.moveTo(ob.x, ob.y - 30); c.lineTo(ob.x + 12, ob.y - 20); c.lineTo(ob.x, ob.y - 15); c.fill()
+      } else if (ob.type === 'hand') {
+        c.fillStyle = '#6A5A4A'
+        c.beginPath(); c.moveTo(ob.x, ob.y); c.lineTo(ob.x - 4, ob.y - 20); c.lineTo(ob.x - 2, ob.y - 25)
+        c.lineTo(ob.x + 2, ob.y - 25); c.lineTo(ob.x + 4, ob.y - 20); c.lineTo(ob.x, ob.y); c.fill()
+        c.fillStyle = '#8B2020'; c.beginPath(); c.arc(ob.x, ob.y - 22, 3, 0, Math.PI * 2); c.fill() // glowing fingertip
+      } else if (ob.type === 'rock') {
+        c.fillStyle = '#4A4A5A'; c.beginPath()
+        c.moveTo(ob.x - 12, ob.y + 8); c.lineTo(ob.x - 8, ob.y - 12); c.lineTo(ob.x + 5, ob.y - 15)
+        c.lineTo(ob.x + 14, ob.y - 5); c.lineTo(ob.x + 10, ob.y + 8); c.closePath(); c.fill()
+      } else if (ob.type === 'shield') {
+        c.fillStyle = '#6A2020'; c.beginPath(); c.arc(ob.x, ob.y, 12, 0, Math.PI * 2); c.fill()
+        c.fillStyle = '#8B7355'; c.beginPath(); c.arc(ob.x, ob.y, 4, 0, Math.PI * 2); c.fill()
+      }
+      c.globalAlpha = 1
+    }
+
+    // LOKE ILLUSIONS - multiple Jims floating in the red fog
+    for (const il of lokeIllusions) {
+      const ilAlpha = Math.min(il.timer / 0.5, 1) * 0.6
+      c.globalAlpha = ilAlpha
+      // Jim silhouette
+      c.fillStyle = il.real ? '#E0B89A' : '#8B4040'
+      c.beginPath(); c.arc(il.x, il.y, 12, 0, Math.PI * 2); c.fill()
+      // If NOT real: antler shadow (Loke!)
+      if (!il.real) {
+        c.strokeStyle = 'rgba(139, 32, 50, 0.5)'; c.lineWidth = 2
+        c.beginPath(); c.moveTo(il.x - 8, il.y - 8); c.lineTo(il.x - 16, il.y - 22); c.stroke()
+        c.beginPath(); c.moveTo(il.x + 8, il.y - 8); c.lineTo(il.x + 16, il.y - 22); c.stroke()
+        // Extra antler branches
+        c.beginPath(); c.moveTo(il.x - 14, il.y - 18); c.lineTo(il.x - 20, il.y - 16); c.stroke()
+        c.beginPath(); c.moveTo(il.x + 14, il.y - 18); c.lineTo(il.x + 20, il.y - 16); c.stroke()
+      }
+      // Eyes
+      c.fillStyle = il.real ? '#6AACDB' : '#FF3030'
+      c.beginPath(); c.arc(il.x - 4, il.y - 2, 1.5, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(il.x + 4, il.y - 2, 1.5, 0, Math.PI * 2); c.fill()
+      // Tattoo
+      c.strokeStyle = '#9E3030'; c.lineWidth = 0.7
+      c.beginPath(); c.moveTo(il.x - 6, il.y - 6); c.quadraticCurveTo(il.x, il.y - 14, il.x + 6, il.y - 6); c.stroke()
+      c.globalAlpha = 1
+    }
+
+    // Jim's reflection in water shows ANTLERS (Loke foreshadowing)
+    if (lokePhase >= 2 && jimActive) {
+      const reflY = boatY + 25 + boatRock
+      c.globalAlpha = 0.12
+      // Normal Jim reflection
+      c.fillStyle = '#E0B89A'; c.beginPath(); c.arc(jimX, reflY, 8, 0, Math.PI * 2); c.fill()
+      // But with ANTLERS
+      c.strokeStyle = '#8B2030'; c.lineWidth = 2
+      c.beginPath(); c.moveTo(jimX - 6, reflY - 6); c.lineTo(jimX - 15, reflY - 20); c.stroke()
+      c.beginPath(); c.moveTo(jimX + 6, reflY - 6); c.lineTo(jimX + 15, reflY - 20); c.stroke()
+      c.beginPath(); c.moveTo(jimX - 12, reflY - 16); c.lineTo(jimX - 20, reflY - 14); c.stroke()
+      c.beginPath(); c.moveTo(jimX + 12, reflY - 16); c.lineTo(jimX + 20, reflY - 14); c.stroke()
+      c.globalAlpha = 1
+    }
+  }
+
   // === LEVEL 3: Storm visual effects (diagonal rain streaks, lightning flash) ===
   if (currentLevel.value === 3) {
     // Lightning flash (rare)
@@ -1786,6 +2949,276 @@ function render() {
       c.font = '14px sans-serif'; c.textAlign = 'center'
       c.fillText(windDir + ' VIND ' + windDir, W / 2, 70)
       c.globalAlpha = 1
+    }
+  }
+
+  // === LEVEL 6: VALHALLA RENDERING (NPCs, feast tables, torches) ===
+  if (currentLevel.value === 6 && gameState.value !== 'loading') {
+    const gndY6 = H > 200 ? H - 60 : 540
+
+    // Feast tables (long wooden tables with food)
+    for (let tx = 300; tx < 3000; tx += 500) {
+      // Table
+      c.fillStyle = '#3A2515'; c.beginPath(); c.roundRect(tx, gndY6 - 18, 200, 12, 3); c.fill()
+      c.fillStyle = '#4A3525'; c.fillRect(tx + 5, gndY6 - 20, 190, 4)
+      // Table legs
+      c.fillStyle = '#2A1508'; c.fillRect(tx + 10, gndY6 - 8, 6, 16); c.fillRect(tx + 184, gndY6 - 8, 6, 16)
+      // Food items on table
+      c.fillStyle = '#8B5A2A'; c.beginPath(); c.ellipse(tx + 50, gndY6 - 26, 15, 8, 0, 0, Math.PI * 2); c.fill() // Meat
+      c.fillStyle = '#F5A623'; c.beginPath(); c.arc(tx + 100, gndY6 - 28, 6, 0, Math.PI * 2); c.fill() // Mead horn
+      c.fillStyle = '#C9A84C'; c.fillRect(tx + 95, gndY6 - 35, 3, 10) // Horn handle
+      c.fillStyle = '#DDA040'; c.beginPath(); c.arc(tx + 150, gndY6 - 25, 8, 0, Math.PI * 2); c.fill() // Bread
+    }
+
+    // Wall torches (along the top)
+    for (let wx = 100; wx < 3200; wx += 250) {
+      const torchScreenX = wx - cameraX
+      if (torchScreenX < -30 || torchScreenX > W + 30) continue
+      // Bracket
+      c.fillStyle = '#555'; c.fillRect(wx, gndY6 - 120, 4, 30)
+      // Fire
+      const fl = Math.sin(time.value * 6 + wx * 0.1) * 3
+      c.fillStyle = '#FF8C30'; c.beginPath(); c.arc(wx + 2, gndY6 - 125 + fl, 8, 0, Math.PI * 2); c.fill()
+      c.fillStyle = '#FFCC44'; c.beginPath(); c.arc(wx + 2, gndY6 - 128 + fl, 4, 0, Math.PI * 2); c.fill()
+      // Light pool on ground
+      const tGlow = c.createRadialGradient(wx, gndY6 - 80, 0, wx, gndY6 - 80, 60)
+      tGlow.addColorStop(0, 'rgba(255, 140, 48, 0.06)'); tGlow.addColorStop(1, 'transparent')
+      c.fillStyle = tGlow; c.fillRect(wx - 60, gndY6 - 140, 120, 120)
+    }
+
+    // NPCs — unique silhouettes per character
+    for (const npc of npcs) {
+      if (npc.x < cameraX - 50 || npc.x > cameraX + W + 50) continue
+      const nx = npc.x, ny = npc.y
+      const idleSwing = Math.sin(time.value * 1.5 + nx * 0.01) * 1.2
+
+      if (npc.name === 'Bjørn Jernside') {
+        // Massive warrior with axe, huge beard
+        c.fillStyle = '#5A3A2A'; c.beginPath(); c.roundRect(nx - 14, ny, 28, 28, 3); c.fill()
+        // Armor studs
+        c.fillStyle = '#8B7355'
+        for (let st = 0; st < 3; st++) c.beginPath(), c.arc(nx - 8 + st * 8, ny + 8, 1.2, 0, Math.PI * 2), c.fill()
+        // Head
+        c.fillStyle = '#D4A574'; c.beginPath(); c.arc(nx, ny - 8, 10, 0, Math.PI * 2); c.fill()
+        // Huge beard
+        c.fillStyle = '#3A2A1A'; c.beginPath(); c.roundRect(nx - 10, ny - 4, 20, 12, 4); c.fill()
+        c.fillStyle = '#2A1A0A'; c.beginPath(); c.roundRect(nx - 7, ny + 6, 14, 5, 2); c.fill()
+        // Horned iron helmet
+        c.fillStyle = '#555'; c.beginPath(); c.roundRect(nx - 10, ny - 16, 20, 8, 3); c.fill()
+        c.fillStyle = '#8B7355'
+        c.beginPath(); c.moveTo(nx - 10, ny - 14); c.lineTo(nx - 16, ny - 22); c.lineTo(nx - 6, ny - 16); c.fill()
+        c.beginPath(); c.moveTo(nx + 10, ny - 14); c.lineTo(nx + 16, ny - 22); c.lineTo(nx + 6, ny - 16); c.fill()
+        // Axe swinging idle
+        c.strokeStyle = '#3A2A1A'; c.lineWidth = 2.5
+        c.beginPath(); c.moveTo(nx + 12, ny + 8); c.lineTo(nx + 22 + idleSwing, ny - 8 + idleSwing); c.stroke()
+        c.fillStyle = '#888'; c.beginPath()
+        c.moveTo(nx + 22 + idleSwing, ny - 10 + idleSwing); c.lineTo(nx + 30 + idleSwing, ny - 14 + idleSwing)
+        c.lineTo(nx + 26 + idleSwing, ny - 2 + idleSwing); c.closePath(); c.fill()
+      } else if (npc.name === 'Freya Skjoldmø') {
+        // Golden-armored valkyrie with spear
+        c.fillStyle = '#C9A84C'; c.beginPath(); c.roundRect(nx - 10, ny, 20, 25, 3); c.fill()
+        // Armor trim
+        c.strokeStyle = '#F5E066'; c.lineWidth = 0.8
+        c.beginPath(); c.moveTo(nx - 10, ny + 10); c.lineTo(nx + 10, ny + 10); c.stroke()
+        // Head
+        c.fillStyle = '#F0D0A0'; c.beginPath(); c.arc(nx, ny - 6, 8, 0, Math.PI * 2); c.fill()
+        // Long blonde hair
+        c.fillStyle = '#F5E066'; c.beginPath(); c.roundRect(nx - 9, ny - 10, 18, 18, 6); c.fill()
+        c.fillStyle = '#F0D0A0'; c.beginPath(); c.arc(nx, ny - 6, 7, 0, Math.PI * 2); c.fill()
+        // Winged circlet
+        c.fillStyle = '#F5E066'; c.beginPath(); c.roundRect(nx - 7, ny - 14, 14, 3, 1); c.fill()
+        // Feathered wings (big, gold-tipped white)
+        c.fillStyle = '#FFF'
+        c.beginPath(); c.moveTo(nx - 10, ny + 2); c.quadraticCurveTo(nx - 26, ny - 14, nx - 14, ny - 8); c.fill()
+        c.beginPath(); c.moveTo(nx + 10, ny + 2); c.quadraticCurveTo(nx + 26, ny - 14, nx + 14, ny - 8); c.fill()
+        // Gold wing edges
+        c.strokeStyle = '#F5E066'; c.lineWidth = 1
+        c.beginPath(); c.moveTo(nx - 10, ny + 2); c.quadraticCurveTo(nx - 26, ny - 14, nx - 14, ny - 8); c.stroke()
+        c.beginPath(); c.moveTo(nx + 10, ny + 2); c.quadraticCurveTo(nx + 26, ny - 14, nx + 14, ny - 8); c.stroke()
+        // Spear
+        c.strokeStyle = '#8B7355'; c.lineWidth = 2
+        c.beginPath(); c.moveTo(nx + 12, ny + 22); c.lineTo(nx + 18, ny - 18); c.stroke()
+        c.fillStyle = '#F5E066'
+        c.beginPath(); c.moveTo(nx + 18, ny - 22); c.lineTo(nx + 22, ny - 14); c.lineTo(nx + 14, ny - 16); c.fill()
+      } else if (npc.name === 'Ragnar Mjødbrygger') {
+        // Round fat warrior with mead horn, hiccups
+        const hic = Math.sin(time.value * 2.5) < 0.92 ? 0 : 1.5
+        // Huge belly
+        c.fillStyle = '#8B2030'; c.beginPath(); c.ellipse(nx, ny + 14 + hic, 16, 14, 0, 0, Math.PI * 2); c.fill()
+        // Barrel stripes
+        c.strokeStyle = '#5A1520'; c.lineWidth = 0.8
+        c.beginPath(); c.arc(nx, ny + 14 + hic, 14, 0, Math.PI); c.stroke()
+        c.beginPath(); c.arc(nx, ny + 14 + hic, 10, 0, Math.PI); c.stroke()
+        // Head (pink, drunk)
+        c.fillStyle = '#F0A080'; c.beginPath(); c.arc(nx, ny - 4 + hic, 9, 0, Math.PI * 2); c.fill()
+        // Red cheeks
+        c.fillStyle = '#D04040'
+        c.beginPath(); c.arc(nx - 5, ny - 2 + hic, 1.5, 0, Math.PI * 2); c.fill()
+        c.beginPath(); c.arc(nx + 5, ny - 2 + hic, 1.5, 0, Math.PI * 2); c.fill()
+        // Bushy red beard
+        c.fillStyle = '#A03820'; c.beginPath(); c.roundRect(nx - 8, ny + 1 + hic, 16, 8, 3); c.fill()
+        // Mead horn in hand
+        c.fillStyle = '#F5A623'
+        c.beginPath(); c.moveTo(nx - 20, ny + 6 + hic); c.lineTo(nx - 14, ny - 2 + hic); c.lineTo(nx - 12, ny + 2 + hic); c.lineTo(nx - 18, ny + 10 + hic); c.fill()
+        // Mead spill
+        c.fillStyle = '#FFDD66'
+        c.beginPath(); c.arc(nx - 14, ny - 2 + hic, 1.5, 0, Math.PI * 2); c.fill()
+      } else if (npc.name === 'Bragi Skalden') {
+        // Skald with harp, musical notes floating
+        c.fillStyle = '#5A4A3A'; c.beginPath(); c.roundRect(nx - 10, ny, 20, 27, 3); c.fill()
+        // Long robe
+        c.fillStyle = '#7A6A5A'
+        c.beginPath(); c.moveTo(nx - 11, ny + 5); c.lineTo(nx - 15, ny + 28); c.lineTo(nx + 15, ny + 28); c.lineTo(nx + 11, ny + 5); c.fill()
+        // Head
+        c.fillStyle = '#D4A574'; c.beginPath(); c.arc(nx, ny - 6, 8, 0, Math.PI * 2); c.fill()
+        // Long grey hair
+        c.fillStyle = '#BBB'; c.beginPath(); c.roundRect(nx - 9, ny - 10, 18, 16, 5); c.fill()
+        c.fillStyle = '#D4A574'; c.beginPath(); c.arc(nx, ny - 6, 7, 0, Math.PI * 2); c.fill()
+        // Harp
+        c.strokeStyle = '#C9A84C'; c.lineWidth = 1.5
+        c.beginPath(); c.moveTo(nx + 10, ny + 4); c.quadraticCurveTo(nx + 22, ny - 2, nx + 18, ny + 18); c.stroke()
+        c.beginPath(); c.moveTo(nx + 10, ny + 4); c.lineTo(nx + 18, ny + 18); c.stroke()
+        c.strokeStyle = '#F5E066'; c.lineWidth = 0.4
+        for (let hs = 0; hs < 4; hs++) {
+          const tt = hs / 3
+          c.beginPath(); c.moveTo(nx + 10 + tt * 8, ny + 4 + tt * 14); c.lineTo(nx + 12 + tt * 10, ny + 4 + tt * 14); c.stroke()
+        }
+        // Musical notes floating (singing idle)
+        const noteY = ny - 18 - Math.abs(Math.sin(time.value * 2)) * 4
+        c.fillStyle = '#F5E066'; c.font = 'bold 10px serif'; c.textAlign = 'center'
+        c.fillText('♪', nx + 12, noteY)
+        c.fillText('♫', nx + 20, noteY - 4)
+      } else if (npc.name === 'Odin Alfader') {
+        // Odin — one eye, raven on shoulder, Gungnir spear, cape
+        // Cape
+        c.fillStyle = '#3A1A3A'
+        c.beginPath(); c.moveTo(nx - 13, ny - 2); c.lineTo(nx - 18, ny + 28); c.lineTo(nx + 18, ny + 28); c.lineTo(nx + 13, ny - 2); c.fill()
+        // Body (deep blue armor)
+        c.fillStyle = '#2A3A5A'; c.beginPath(); c.roundRect(nx - 11, ny, 22, 26, 3); c.fill()
+        // Gold trim
+        c.strokeStyle = '#C9A84C'; c.lineWidth = 1
+        c.beginPath(); c.moveTo(nx - 11, ny + 4); c.lineTo(nx + 11, ny + 4); c.stroke()
+        // Head
+        c.fillStyle = '#E0B89A'; c.beginPath(); c.arc(nx, ny - 8, 9, 0, Math.PI * 2); c.fill()
+        // Long white beard
+        c.fillStyle = '#E8E8E8'; c.beginPath(); c.roundRect(nx - 10, ny - 5, 20, 14, 5); c.fill()
+        // Head circle redraw above beard
+        c.fillStyle = '#E0B89A'; c.beginPath(); c.arc(nx, ny - 10, 8, 0, Math.PI * 2); c.fill()
+        // Eye patch (left)
+        c.fillStyle = '#1A0A00'; c.fillRect(nx - 6, ny - 11, 5, 3)
+        c.strokeStyle = '#1A0A00'; c.lineWidth = 0.6
+        c.beginPath(); c.moveTo(nx - 8, ny - 12); c.lineTo(nx, ny - 8); c.stroke()
+        // Remaining eye (glowing blue)
+        c.fillStyle = '#6AACDB'; c.beginPath(); c.arc(nx + 3, ny - 10, 1.5, 0, Math.PI * 2); c.fill()
+        // Pointed crown/hat
+        c.fillStyle = '#C9A84C'
+        c.beginPath(); c.moveTo(nx - 9, ny - 16); c.lineTo(nx, ny - 24); c.lineTo(nx + 9, ny - 16); c.fill()
+        // Gungnir spear
+        c.strokeStyle = '#8B7355'; c.lineWidth = 2.5
+        c.beginPath(); c.moveTo(nx + 14, ny + 24); c.lineTo(nx + 20, ny - 22); c.stroke()
+        c.fillStyle = '#F5E066'
+        c.beginPath(); c.moveTo(nx + 20, ny - 26); c.lineTo(nx + 24, ny - 16); c.lineTo(nx + 16, ny - 18); c.fill()
+        // Raven on shoulder
+        c.fillStyle = '#1A1A1A'
+        c.beginPath(); c.ellipse(nx - 14, ny - 4, 5, 3, 0, 0, Math.PI * 2); c.fill()
+        c.beginPath(); c.arc(nx - 17, ny - 6, 2.5, 0, Math.PI * 2); c.fill()
+        c.fillStyle = '#CC2020'; c.beginPath(); c.arc(nx - 18, ny - 7, 0.7, 0, Math.PI * 2); c.fill()
+      } else if (npc.name === 'Sigrun Valkyrie') {
+        // Younger valkyrie — blue wings, slimmer silhouette
+        c.fillStyle = '#3A5A8A'; c.beginPath(); c.roundRect(nx - 9, ny, 18, 25, 3); c.fill()
+        c.strokeStyle = '#88CCE0'; c.lineWidth = 0.6
+        c.beginPath(); c.moveTo(nx - 9, ny + 10); c.lineTo(nx + 9, ny + 10); c.stroke()
+        // Head
+        c.fillStyle = '#F0D0A0'; c.beginPath(); c.arc(nx, ny - 6, 8, 0, Math.PI * 2); c.fill()
+        // Braided hair
+        c.fillStyle = '#8B6914'
+        c.beginPath(); c.roundRect(nx - 8, ny - 10, 6, 12, 3); c.fill()
+        c.beginPath(); c.roundRect(nx + 2, ny - 10, 6, 12, 3); c.fill()
+        // Wings (blue)
+        c.fillStyle = '#88CCE0'
+        c.beginPath(); c.moveTo(nx - 9, ny + 2); c.quadraticCurveTo(nx - 22, ny - 10, nx - 12, ny - 6); c.fill()
+        c.beginPath(); c.moveTo(nx + 9, ny + 2); c.quadraticCurveTo(nx + 22, ny - 10, nx + 12, ny - 6); c.fill()
+        // Small shield (blue)
+        c.fillStyle = '#2A4A7A'; c.beginPath(); c.arc(nx - 12, ny + 10, 5, 0, Math.PI * 2); c.fill()
+        c.strokeStyle = '#88CCE0'; c.lineWidth = 0.5
+        c.beginPath(); c.arc(nx - 12, ny + 10, 5, 0, Math.PI * 2); c.stroke()
+      } else if (npc.name === 'Den Gamle Porsche-Ejer') {
+        // Old Porsche owner — tweed jacket, driving gloves, tiny 911 model in hand
+        c.fillStyle = '#8B6F47'; c.beginPath(); c.roundRect(nx - 11, ny, 22, 26, 3); c.fill()
+        // Tweed pattern
+        c.fillStyle = '#6A5030'
+        for (let tw = 0; tw < 6; tw++) {
+          c.fillRect(nx - 10 + (tw % 3) * 7, ny + 4 + Math.floor(tw / 3) * 8, 1, 1)
+        }
+        // Head (older, wrinkled)
+        c.fillStyle = '#D4A574'; c.beginPath(); c.arc(nx, ny - 6, 8, 0, Math.PI * 2); c.fill()
+        // Grey hair (short, combed)
+        c.fillStyle = '#B0B0B0'; c.beginPath(); c.roundRect(nx - 8, ny - 13, 16, 6, 3); c.fill()
+        // Glasses (aviator style)
+        c.strokeStyle = '#C9A84C'; c.lineWidth = 1
+        c.beginPath(); c.arc(nx - 3, ny - 6, 2.5, 0, Math.PI * 2); c.stroke()
+        c.beginPath(); c.arc(nx + 3, ny - 6, 2.5, 0, Math.PI * 2); c.stroke()
+        c.beginPath(); c.moveTo(nx - 1, ny - 6); c.lineTo(nx + 1, ny - 6); c.stroke()
+        // Wistful smile
+        c.strokeStyle = '#8B7060'; c.lineWidth = 0.8
+        c.beginPath(); c.moveTo(nx - 3, ny); c.quadraticCurveTo(nx, ny + 2, nx + 3, ny); c.stroke()
+        // Tiny Porsche 911 model in his hand (silhouette)
+        c.save()
+        c.translate(nx + 14, ny + 10)
+        c.fillStyle = '#D93A3A' // Guards red
+        c.beginPath()
+        c.moveTo(-7, 1); c.lineTo(-5, -2); c.quadraticCurveTo(0, -4, 4, -3); c.lineTo(6, 0); c.lineTo(7, 1); c.lineTo(-7, 1); c.closePath(); c.fill()
+        // Wheels
+        c.fillStyle = '#1A1A1A'
+        c.beginPath(); c.arc(-4, 1, 1.3, 0, Math.PI * 2); c.fill()
+        c.beginPath(); c.arc(3, 1, 1.3, 0, Math.PI * 2); c.fill()
+        // Windshield
+        c.fillStyle = '#88CCE0'
+        c.fillRect(-3, -2, 4, 1)
+        c.restore()
+      } else {
+        // Fallback generic NPC
+        const bodyColor = npc.type === 'valkyrie' ? '#4A6A8A' : npc.type === 'king' ? '#C9A84C' : npc.type === 'skald' ? '#5A4A3A' : '#5A3A2A'
+        c.fillStyle = bodyColor; c.beginPath(); c.roundRect(nx - 10, ny, 20, 25, 3); c.fill()
+        c.fillStyle = '#D4A574'; c.beginPath(); c.arc(nx, ny - 6, 8, 0, Math.PI * 2); c.fill()
+      }
+
+      // Name above (keep color cue)
+      c.fillStyle = npc.interacted ? '#888' : '#F5A623'; c.font = 'bold 9px "Space Grotesk"'; c.textAlign = 'center'
+      c.fillText(npc.name, npc.x, npc.y - 28)
+      // "Talk" prompt when near
+      if (showNpcPrompt && nearestNpcName === npc.name) {
+        c.fillStyle = '#F5A623'; c.font = 'bold 11px "Space Grotesk"'
+        c.fillText('[SPACE] Tal', npc.x, npc.y - 42)
+      }
+    }
+
+    // Drinkgame overlay
+    if (drinkGameActive && valhallaPhase === 2) {
+      c.fillStyle = 'rgba(10, 10, 5, 0.6)'; c.fillRect(0, 0, W, H)
+      c.fillStyle = '#F5A623'; c.font = 'bold 22px "Space Grotesk"'; c.textAlign = 'center'
+      c.fillText('DRIKKESPIL!', W / 2, H * 0.25)
+      c.fillText(`Runde ${drinkGameRound + 1}/3`, W / 2, H * 0.25 + 30)
+      // Timing bar
+      const barW2 = W * 0.6, barH2 = 20, barX2 = (W - barW2) / 2, barY2 = H * 0.45
+      c.fillStyle = '#333'; c.beginPath(); c.roundRect(barX2, barY2, barW2, barH2, 6); c.fill()
+      // Gold sweet spot (35-65%)
+      c.fillStyle = 'rgba(245, 166, 35, 0.3)'
+      c.fillRect(barX2 + barW2 * 0.35, barY2, barW2 * 0.3, barH2)
+      // Marker
+      const markerX = barX2 + (drinkGameMarker / 100) * barW2
+      c.fillStyle = '#FFF'; c.fillRect(markerX - 2, barY2 - 4, 4, barH2 + 8)
+      c.fillStyle = '#CCC'; c.font = '14px "DM Sans"'
+      c.fillText('Tryk SPACE i det gyldne felt!', W / 2, barY2 + 50)
+      c.fillText(`Score: ${drinkGameScore}/3`, W / 2, barY2 + 74)
+    }
+
+    // Loke reveal glow (red creeping in from edges)
+    if (revealProgress > 0) {
+      const revAlpha = revealProgress * 0.2
+      const revGrad = c.createRadialGradient(W / 2, H / 2, H * 0.2, W / 2, H / 2, H * 0.7)
+      revGrad.addColorStop(0, 'transparent'); revGrad.addColorStop(1, `rgba(139, 32, 48, ${revAlpha})`)
+      c.fillStyle = revGrad; c.fillRect(0, 0, W, H)
     }
   }
 
@@ -1820,29 +3253,92 @@ function render() {
     c.globalAlpha = blink
     const pw = getPlayerW(), ph = getPlayerH()
 
+    // Mood-based bounce offset (up/down)
+    const bounce = larsBounceTimer > 0 ? -Math.sin((1 - larsBounceTimer / 0.6) * Math.PI) * 6 : 0
+    // Drunk wobble
+    const wobble = playerPower === 'drunk' ? Math.sin(time.value * 8) * 0.15 : 0
+    // Victory hop cycle
+    const victoryHop = larsMood === 'victory' ? Math.abs(Math.sin(time.value * 8)) * -4 : 0
+
     c.save()
-    c.translate(px + pw / 2, py + ph / 2 - 4)
+    c.translate(px + pw / 2, py + ph / 2 - 4 + bounce + victoryHop)
     if (facing < 0) c.scale(-1, 1)
+    if (wobble) c.rotate(wobble)
     const s = playerPower === 'big' ? 1.0 : 0.8
 
     // Lars body
-    const bodyColor = '#3A4A3A'
+    const bodyColor = playerPower === 'drunk' ? '#4A6A3A' : '#3A4A3A'
     c.fillStyle = bodyColor; c.beginPath(); c.roundRect(-12 * s, 2 * s, 24 * s, 18 * s, 3); c.fill()
     // Head
     c.fillStyle = '#D4A574'; c.beginPath(); c.arc(0, -8 * s, 11 * s, 0, Math.PI * 2); c.fill()
-    // Beanie
-    c.fillStyle = '#1A1A1A'; c.beginPath(); c.roundRect(-11 * s, -20 * s, 22 * s, 10 * s, 4); c.fill()
-    c.beginPath(); c.arc(0, -22 * s, 4 * s, 0, Math.PI * 2); c.fill()
+
+    // Beanie — skewed if scared
+    const beanieRot = larsMood === 'scared' ? -0.25 : 0
+    c.save()
+    c.translate(0, -15 * s)
+    if (beanieRot) c.rotate(beanieRot)
+    c.fillStyle = '#1A1A1A'; c.beginPath(); c.roundRect(-11 * s, -5 * s, 22 * s, 10 * s, 4); c.fill()
+    c.beginPath(); c.arc(0, -7 * s, 4 * s, 0, Math.PI * 2); c.fill()
+    c.restore()
+
     // Beard
     c.fillStyle = '#2A1A0A'; c.beginPath(); c.roundRect(-8 * s, -2 * s, 16 * s, 8 * s, 3); c.fill()
     c.fillStyle = '#1A0A00'; c.beginPath(); c.roundRect(-6 * s, 4 * s, 12 * s, 4 * s, 2); c.fill()
-    // Sunglasses
+
+    // Mouth based on mood
+    if (larsMood === 'happy' || larsMood === 'victory') {
+      // Wide grin
+      c.strokeStyle = '#F5E6D0'; c.lineWidth = 1.8 * s
+      c.beginPath(); c.moveTo(-4 * s, 1 * s); c.quadraticCurveTo(0, 6 * s, 4 * s, 1 * s); c.stroke()
+      // Teeth
+      c.fillStyle = '#FFF8E0'; c.beginPath(); c.roundRect(-3 * s, 1 * s, 6 * s, 2 * s, 1); c.fill()
+    } else if (larsMood === 'scared') {
+      // Open shocked mouth (O-shape)
+      c.fillStyle = '#1A0A00'; c.beginPath(); c.arc(0, 3 * s, 2.5 * s, 0, Math.PI * 2); c.fill()
+    }
+
+    // Sunglasses — lifted slightly if happy/victory (shows eyes glinting)
+    const shadeYOffset = (larsMood === 'happy' || larsMood === 'victory') ? -1.5 * s : 0
     c.fillStyle = '#0A0A0A'
-    c.beginPath(); c.roundRect(-8 * s, -11 * s, 7 * s, 5 * s, 2); c.fill()
-    c.beginPath(); c.roundRect(1 * s, -11 * s, 7 * s, 5 * s, 2); c.fill()
+    c.beginPath(); c.roundRect(-8 * s, -11 * s + shadeYOffset, 7 * s, 5 * s, 2); c.fill()
+    c.beginPath(); c.roundRect(1 * s, -11 * s + shadeYOffset, 7 * s, 5 * s, 2); c.fill()
+
+    // Happy/victory: eyes glinting above lifted shades
+    if (larsMood === 'happy' || larsMood === 'victory') {
+      c.fillStyle = '#FFF'
+      c.beginPath(); c.arc(-4.5 * s, -12 * s, 0.9 * s, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(4.5 * s, -12 * s, 0.9 * s, 0, Math.PI * 2); c.fill()
+    }
+    // Scared: wide eyes above sunglasses
+    if (larsMood === 'scared') {
+      c.fillStyle = '#FFF'
+      c.beginPath(); c.arc(-4.5 * s, -12 * s, 1.4 * s, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(4.5 * s, -12 * s, 1.4 * s, 0, Math.PI * 2); c.fill()
+      c.fillStyle = '#000'
+      c.beginPath(); c.arc(-4.5 * s, -12 * s, 0.5 * s, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(4.5 * s, -12 * s, 0.5 * s, 0, Math.PI * 2); c.fill()
+    }
+
     // Gold chain
     c.strokeStyle = '#F5A623'; c.lineWidth = 1.5 * s
     c.beginPath(); c.moveTo(-6 * s, 4 * s); c.quadraticCurveTo(0, 10 * s, 6 * s, 4 * s); c.stroke()
+
+    // Victory: raised fist in free hand
+    if (larsMood === 'victory') {
+      c.strokeStyle = '#D4A574'; c.lineWidth = 3 * s
+      c.beginPath(); c.moveTo(10 * s, 5 * s); c.lineTo(14 * s, -12 * s); c.stroke()
+      // Fist
+      c.fillStyle = '#D4A574'; c.beginPath(); c.arc(14 * s, -14 * s, 3 * s, 0, Math.PI * 2); c.fill()
+      // Knuckle highlight
+      c.fillStyle = '#E8B883'; c.beginPath(); c.arc(13 * s, -15 * s, 1.2 * s, 0, Math.PI * 2); c.fill()
+      // Celebration sparks
+      c.fillStyle = '#FFE066'
+      for (let k = 0; k < 3; k++) {
+        const sa = time.value * 4 + k * 2.1
+        c.beginPath(); c.arc(14 * s + Math.cos(sa) * 8, -14 * s + Math.sin(sa) * 8, 1.2, 0, Math.PI * 2); c.fill()
+      }
+    }
+
     // Legs
     c.fillStyle = '#2A2A5A'
     c.beginPath(); c.roundRect(-8 * s, 20 * s, 7 * s, 10 * s, 2); c.fill()
@@ -1854,47 +3350,106 @@ function render() {
 
   // === JIM COMPANION (Level 2+) ===
   if (jimActive && (gameState.value === 'playing' || gameState.value === 'boss')) {
+    // Laughter body shake
+    const laughShake = jimMood === 'laughing' ? Math.sin(time.value * 24) * 1.2 : 0
+    // Evil horns grow subtly with intensity (Loke foreshadowing)
+    const hornLen = jimEvilIntensity * 10
+
+    c.save()
+    c.translate(jimX + laughShake, jimY)
+
     // Jim's shadow (foreshadowing - antler-shaped!)
     c.globalAlpha = 0.1
     c.fillStyle = '#000'
-    c.beginPath(); c.ellipse(jimX, jimY + 22, 12, 4, 0, 0, Math.PI * 2); c.fill()
+    c.beginPath(); c.ellipse(0, 22, 12, 4, 0, 0, Math.PI * 2); c.fill()
     // Shadow has antler hints (Loke foreshadowing)
     c.strokeStyle = 'rgba(0,0,0,0.06)'; c.lineWidth = 2
-    c.beginPath(); c.moveTo(jimX - 6, jimY + 18); c.lineTo(jimX - 14, jimY + 10); c.stroke()
-    c.beginPath(); c.moveTo(jimX + 6, jimY + 18); c.lineTo(jimX + 14, jimY + 10); c.stroke()
+    c.beginPath(); c.moveTo(-6, 18); c.lineTo(-14, 10); c.stroke()
+    c.beginPath(); c.moveTo(6, 18); c.lineTo(14, 10); c.stroke()
     c.globalAlpha = 1
 
     // Jim body (dalmatian shirt, bald, tattoo)
-    c.fillStyle = '#F5F0E8'; c.beginPath(); c.roundRect(jimX - 8, jimY + 2, 16, 14, 2); c.fill()
+    c.fillStyle = '#F5F0E8'; c.beginPath(); c.roundRect(-8, 2, 16, 14, 2); c.fill()
     c.fillStyle = '#1A1A1A'
-    c.beginPath(); c.arc(jimX - 3, jimY + 6, 2, 0, Math.PI * 2); c.fill()
-    c.beginPath(); c.arc(jimX + 4, jimY + 9, 2.5, 0, Math.PI * 2); c.fill()
+    c.beginPath(); c.arc(-3, 6, 2, 0, Math.PI * 2); c.fill()
+    c.beginPath(); c.arc(4, 9, 2.5, 0, Math.PI * 2); c.fill()
+
     // Head (bald)
-    c.fillStyle = '#E0B89A'; c.beginPath(); c.arc(jimX, jimY - 5, 8, 0, Math.PI * 2); c.fill()
+    c.fillStyle = '#E0B89A'; c.beginPath(); c.arc(0, -5, 8, 0, Math.PI * 2); c.fill()
+
+    // Evil horns emerging (intensity > 0)
+    if (hornLen > 1) {
+      c.fillStyle = '#2A1A0A'
+      c.beginPath(); c.moveTo(-6, -10); c.lineTo(-8, -10 - hornLen); c.lineTo(-4, -9); c.closePath(); c.fill()
+      c.beginPath(); c.moveTo(6, -10); c.lineTo(8, -10 - hornLen); c.lineTo(4, -9); c.closePath(); c.fill()
+    }
+
     // Tattoo
     c.strokeStyle = '#9E3030'; c.lineWidth = 0.7
-    c.beginPath(); c.moveTo(jimX - 5, jimY - 8); c.quadraticCurveTo(jimX, jimY - 14, jimX + 5, jimY - 8); c.stroke()
-    c.fillStyle = '#9E3030'; c.beginPath(); c.arc(jimX, jimY - 12, 1, 0, Math.PI * 2); c.fill()
-    // Blue eyes
-    c.fillStyle = '#6AACDB'
-    c.beginPath(); c.arc(jimX - 3, jimY - 5, 1.2, 0, Math.PI * 2); c.fill()
-    c.beginPath(); c.arc(jimX + 3, jimY - 5, 1.2, 0, Math.PI * 2); c.fill()
-    // Raised finger
-    c.strokeStyle = '#E0B89A'; c.lineWidth = 2
-    c.beginPath(); c.moveTo(jimX + 10, jimY + 2); c.lineTo(jimX + 15, jimY - 6); c.stroke()
+    c.beginPath(); c.moveTo(-5, -8); c.quadraticCurveTo(0, -14, 5, -8); c.stroke()
+    c.fillStyle = '#9E3030'; c.beginPath(); c.arc(0, -12, 1, 0, Math.PI * 2); c.fill()
+
+    // Eyes (blue normally, red when evil)
+    const eyeColor = jimMood === 'evil' ? '#D93A3A' : jimEvilIntensity > 0.3 ? `rgb(${Math.min(220, 106 + jimEvilIntensity * 140)}, ${Math.max(60, 172 - jimEvilIntensity * 100)}, ${Math.max(60, 219 - jimEvilIntensity * 160)})` : '#6AACDB'
+    c.fillStyle = eyeColor
+    if (jimMood === 'laughing') {
+      // Laughing: eyes crinkled (short lines)
+      c.strokeStyle = eyeColor; c.lineWidth = 1.4
+      c.beginPath(); c.moveTo(-4, -5); c.lineTo(-2, -5); c.stroke()
+      c.beginPath(); c.moveTo(2, -5); c.lineTo(4, -5); c.stroke()
+    } else {
+      c.beginPath(); c.arc(-3, -5, 1.2, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(3, -5, 1.2, 0, Math.PI * 2); c.fill()
+    }
+
+    // Mouth based on mood
+    if (jimMood === 'laughing') {
+      c.fillStyle = '#1A0A00'
+      c.beginPath(); c.ellipse(0, -1, 3, 2, 0, 0, Math.PI * 2); c.fill()
+      // Teeth
+      c.fillStyle = '#FFF8E0'; c.fillRect(-2, -2, 4, 1.2)
+    } else if (jimMood === 'evil') {
+      // Smirk
+      c.strokeStyle = '#9E3030'; c.lineWidth = 1
+      c.beginPath(); c.moveTo(-2, -1); c.quadraticCurveTo(1, -3, 3, -1); c.stroke()
+    }
+
+    // Finger — pointing is bigger/extended
+    if (jimMood === 'pointing') {
+      c.strokeStyle = '#E0B89A'; c.lineWidth = 2.5
+      const dirX = px > jimX ? 1 : -1
+      c.beginPath(); c.moveTo(dirX * 10, 2); c.lineTo(dirX * 22, -2); c.stroke()
+      // Nail tip
+      c.fillStyle = '#F5E6D0'; c.beginPath(); c.arc(dirX * 22, -2, 1.3, 0, Math.PI * 2); c.fill()
+    } else {
+      c.strokeStyle = '#E0B89A'; c.lineWidth = 2
+      c.beginPath(); c.moveTo(10, 2); c.lineTo(15, -6); c.stroke()
+    }
+
+    c.restore()
+
+    // Laughter "HA!" particles floating
+    if (jimMood === 'laughing' && Math.random() < 0.15) {
+      particles.push({
+        x: jimX + (Math.random() - 0.5) * 10, y: jimY - 20,
+        vx: (Math.random() - 0.5) * 30, vy: -40 - Math.random() * 20,
+        life: 0.8, maxLife: 0.8, size: 8, color: 'jim_laugh',
+      })
+    }
 
     // Floating comment above Jim
     if (jimComment) {
       c.globalAlpha = Math.min(1, jimCommentTimer + 2)
-      c.fillStyle = 'rgba(10, 15, 10, 0.8)'
+      c.fillStyle = jimMood === 'evil' ? 'rgba(40, 10, 10, 0.85)' : 'rgba(10, 15, 10, 0.8)'
+      c.font = '9px "DM Sans"'
       const tw = c.measureText(jimComment).width
       c.beginPath(); c.roundRect(jimX - tw / 2 - 6, jimY - 30, tw + 12, 18, 6); c.fill()
-      c.fillStyle = '#CCC'; c.font = '9px "DM Sans"'; c.textAlign = 'center'
+      c.fillStyle = jimMood === 'evil' ? '#FF8888' : '#CCC'; c.textAlign = 'center'
       c.fillText(jimComment, jimX, jimY - 17)
       c.globalAlpha = 1
     }
 
-    // Prank visual indicator
+    // Prank visual indicators
     if (jimPrankActive === 'drunk') {
       c.fillStyle = 'rgba(245, 166, 35, 0.15)'
       c.beginPath(); c.arc(px + getPlayerW() / 2, py + getPlayerH() / 2, 20, 0, Math.PI * 2); c.fill()
@@ -1904,8 +3459,23 @@ function render() {
     if (jimPrankActive === 'heavy') {
       c.fillStyle = '#888'; c.font = 'bold 8px "Space Grotesk"'; c.textAlign = 'center'
       c.fillText('TUNG!', px + getPlayerW() / 2, py - 10)
-      // Draw stone at Lars' foot
       c.fillStyle = '#555'; c.beginPath(); c.arc(px + getPlayerW() / 2, py + getPlayerH() + 5, 6, 0, Math.PI * 2); c.fill()
+    }
+    if (jimPrankActive === 'swap') {
+      c.fillStyle = 'rgba(106, 172, 219, 0.2)'
+      c.beginPath(); c.arc(px + getPlayerW() / 2, py + getPlayerH() / 2, 22, 0, Math.PI * 2); c.fill()
+      c.fillStyle = '#6AACDB'; c.font = 'bold 8px "Space Grotesk"'; c.textAlign = 'center'
+      c.fillText('← BYTTET →', px + getPlayerW() / 2, py - 10)
+    }
+    if (jimPrankActive === 'wind') {
+      c.fillStyle = '#B0C4D9'; c.font = 'bold 8px "Space Grotesk"'; c.textAlign = 'center'
+      c.fillText('STORM!', px + getPlayerW() / 2, py - 10)
+    }
+    if (jimPrankActive === 'fire') {
+      c.fillStyle = 'rgba(255, 80, 30, 0.2)'
+      c.beginPath(); c.arc(px + getPlayerW() / 2, py + getPlayerH() / 2, 28, 0, Math.PI * 2); c.fill()
+      c.fillStyle = '#FF5030'; c.font = 'bold 8px "Space Grotesk"'; c.textAlign = 'center'
+      c.fillText('BRANDER!', px + getPlayerW() / 2, py - 10)
     }
   }
 
@@ -1953,6 +3523,34 @@ function render() {
       c.globalAlpha = (p.life / p.maxLife) * 0.5
       c.fillStyle = '#AAFF66'
       c.beginPath(); c.arc(p.x, p.y, p.size, 0, Math.PI * 2); c.fill()
+    } else if (p.color === 'odin_chaos') {
+      // Mini Odin heads flying around
+      c.globalAlpha = (p.life / p.maxLife) * 0.6
+      c.fillStyle = '#E0C8A0'; c.beginPath(); c.arc(p.x, p.y, p.size, 0, Math.PI * 2); c.fill()
+      c.fillStyle = '#F5A623'; c.beginPath(); c.arc(p.x - 2, p.y - 1, 1.5, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(p.x + 2, p.y - 1, 1.5, 0, Math.PI * 2); c.fill()
+    } else if (p.color === 'dragonfire') {
+      c.globalAlpha = (p.life / p.maxLife) * 0.8
+      c.fillStyle = p.life > p.maxLife * 0.5 ? '#FF3300' : '#FFAA00'
+      c.beginPath(); c.arc(p.x, p.y, p.size, 0, Math.PI * 2); c.fill()
+      c.globalAlpha = (p.life / p.maxLife) * 0.3
+      c.fillStyle = '#FF6600'; c.beginPath(); c.arc(p.x, p.y, p.size * 2, 0, Math.PI * 2); c.fill()
+    } else if (p.color === 'red_fog') {
+      c.globalAlpha = (p.life / p.maxLife) * 0.1
+      c.fillStyle = '#8B2030'
+      c.beginPath(); c.arc(p.x, p.y, p.size, 0, Math.PI * 2); c.fill()
+    } else if (p.color === 'red_ember') {
+      c.globalAlpha = (p.life / p.maxLife) * 0.7
+      c.fillStyle = '#CC3040'
+      c.beginPath(); c.arc(p.x, p.y, p.size, 0, Math.PI * 2); c.fill()
+    } else if (p.color === 'gold_ember') {
+      c.globalAlpha = (p.life / p.maxLife) * 0.7
+      c.fillStyle = '#F5A623'
+      c.beginPath(); c.arc(p.x, p.y, p.size, 0, Math.PI * 2); c.fill()
+    } else if (p.color === 'warm_smoke') {
+      c.globalAlpha = (p.life / p.maxLife) * 0.05
+      c.fillStyle = '#AA8850'
+      c.beginPath(); c.arc(p.x, p.y, p.size, 0, Math.PI * 2); c.fill()
     } else if (p.color === 'ember') {
       c.globalAlpha = (p.life / p.maxLife) * 0.8
       c.fillStyle = Math.random() > 0.5 ? '#FF6600' : '#FF3300'
@@ -1986,6 +3584,37 @@ function render() {
       const ffGlow = c.createRadialGradient(p.x, p.y, 0, p.x, p.y, 8)
       ffGlow.addColorStop(0, `rgba(255, 238, 68, ${ff * 0.2})`); ffGlow.addColorStop(1, 'transparent')
       c.fillStyle = ffGlow; c.fillRect(p.x - 8, p.y - 8, 16, 16)
+    } else if (p.color === 'jim_laugh') {
+      c.globalAlpha = p.life / p.maxLife
+      c.fillStyle = '#D93A3A'
+      c.font = 'bold 9px "Space Grotesk"'
+      c.textAlign = 'center'
+      c.fillText('HA!', p.x, p.y)
+    } else if (p.color === 'sparkle') {
+      const ls = p.life / p.maxLife
+      c.globalAlpha = ls
+      c.fillStyle = '#FFE066'
+      // Star shape
+      c.save()
+      c.translate(p.x, p.y)
+      c.rotate(time.value * 4)
+      c.beginPath()
+      for (let sp = 0; sp < 4; sp++) {
+        const ang = (sp / 4) * Math.PI * 2
+        c.lineTo(Math.cos(ang) * p.size, Math.sin(ang) * p.size)
+        c.lineTo(Math.cos(ang + Math.PI / 4) * p.size * 0.4, Math.sin(ang + Math.PI / 4) * p.size * 0.4)
+      }
+      c.closePath(); c.fill()
+      c.restore()
+    } else if (p.color === 'gold_burst') {
+      c.globalAlpha = p.life / p.maxLife
+      const col = Math.random() < 0.5 ? '#F5A623' : '#FFD860'
+      c.fillStyle = col
+      c.beginPath(); c.arc(p.x, p.y, p.size, 0, Math.PI * 2); c.fill()
+    } else if (p.color === 'trail') {
+      c.globalAlpha = (p.life / p.maxLife) * 0.5
+      c.fillStyle = '#88CCE0'
+      c.beginPath(); c.arc(p.x, p.y, p.size, 0, Math.PI * 2); c.fill()
     } else {
       c.globalAlpha = p.life / p.maxLife
       c.fillStyle = p.color
@@ -2011,6 +3640,73 @@ function render() {
   vigGrad.addColorStop(1, 'rgba(0, 0, 0, 0.4)')
   c.fillStyle = vigGrad; c.fillRect(0, 0, W, H)
 
+  // Level 5 Loke chaos effects (only during gameplay)
+  if (currentLevel.value === 5 && gameState.value === 'playing') {
+    // DARKNESS
+    if (jimPrankActive === 'dark') {
+      c.globalAlpha = 0.7; c.fillStyle = '#000'; c.fillRect(0, 0, W, H); c.globalAlpha = 1
+      c.fillStyle = '#8B2030'; c.font = 'bold 24px "Space Grotesk"'; c.textAlign = 'center'
+      c.fillText('M\u00d8RKE!', W / 2, H * 0.4)
+    }
+    // Shrink
+    if (jimPrankActive === 'shrink') {
+      c.fillStyle = '#E84393'; c.font = 'bold 12px "Space Grotesk"'; c.textAlign = 'center'
+      c.fillText('MINI-B\u00c5D!', W / 2, boatY - 50)
+    }
+    // Invisible ball
+    if (jimPrankActive === 'invisible_ball') {
+      c.fillStyle = '#8B2030'; c.font = 'bold 14px "Space Grotesk"'; c.textAlign = 'center'
+      c.fillText('USYNLIGT HOVED!', W / 2, H * 0.35)
+    }
+    // PIA RINGER!
+    if (piaActive) {
+      // Pink speech bubble
+      c.fillStyle = 'rgba(255, 105, 180, 0.15)'; c.fillRect(0, 0, W, H)
+      c.fillStyle = '#FF69B4'; c.font = 'bold 18px "Space Grotesk"'; c.textAlign = 'center'
+      c.fillText('PIA: LARS! DU M\u00c5 IKKE K\u00d8BE EN PORSCHE!', W / 2, H * 0.4)
+      c.fillStyle = '#FF1493'; c.font = '12px "DM Sans"'
+      c.fillText('(B\u00e5den er frosset!)', W / 2, H * 0.4 + 22)
+    }
+    // Ghost paddle at top
+    if (ghostPaddleActive) {
+      c.globalAlpha = 0.3
+      c.fillStyle = '#8B2030'
+      c.beginPath(); c.roundRect(boatX + 20, 195, 200, 10, 5); c.fill()
+      c.fillStyle = '#CC3040'; c.font = 'bold 8px "Space Grotesk"'; c.textAlign = 'center'
+      c.fillText('GHOST B\u00c5D', boatX + 120, 190)
+      c.globalAlpha = 1
+    }
+    // Big/Tyk Lars (blocks view partially)
+    if (bigLarsActive) {
+      c.globalAlpha = 0.3
+      // Giant Lars silhouette
+      c.fillStyle = '#D4A574'
+      c.beginPath(); c.arc(W / 2, H * 0.5, 120, 0, Math.PI * 2); c.fill() // head
+      c.fillStyle = '#1A1A1A'
+      c.beginPath(); c.roundRect(W / 2 - 60, H * 0.5 - 160, 120, 40, 20); c.fill() // beanie
+      c.fillStyle = '#2A1A0A'
+      c.beginPath(); c.roundRect(W / 2 - 40, H * 0.5 + 20, 80, 50, 10); c.fill() // beard
+      c.fillStyle = '#0A0A0A'
+      c.beginPath(); c.roundRect(W / 2 - 35, H * 0.5 - 20, 30, 15, 5); c.fill() // sunglasses L
+      c.beginPath(); c.roundRect(W / 2 + 5, H * 0.5 - 20, 30, 15, 5); c.fill() // sunglasses R
+      c.globalAlpha = 1
+    }
+    // Extra balls rendering
+    for (const eb of extraBalls) {
+      if (!eb.active) continue
+      c.fillStyle = '#E0C8A0'; c.beginPath(); c.arc(eb.x, eb.y, 10, 0, Math.PI * 2); c.fill()
+      c.fillStyle = '#F5A623'; c.beginPath(); c.arc(eb.x + 3, eb.y - 2, 2, 0, Math.PI * 2); c.fill()
+      c.strokeStyle = '#8B7355'; c.lineWidth = 1.5
+      c.beginPath(); c.moveTo(eb.x - 8, eb.y - 5); c.lineTo(eb.x - 12, eb.y - 12); c.stroke()
+      c.beginPath(); c.moveTo(eb.x + 8, eb.y - 5); c.lineTo(eb.x + 12, eb.y - 12); c.stroke()
+    }
+    // Drunk indicator
+    if (jimPrankActive === 'drunk') {
+      c.fillStyle = '#F5A623'; c.font = 'bold 14px "Space Grotesk"'; c.textAlign = 'center'
+      c.fillText('INVERTERET!', W / 2, boatY - 50)
+    }
+  }
+
   // ==================== HUD ====================
   c.fillStyle = 'rgba(10, 15, 10, 0.7)'; c.fillRect(0, 0, W, 48)
   c.strokeStyle = 'rgba(139, 32, 32, 0.3)'; c.lineWidth = 1; c.beginPath(); c.moveTo(0, 48); c.lineTo(W, 48); c.stroke()
@@ -2028,11 +3724,45 @@ function render() {
   c.fillStyle = '#E84393'; c.fillText(`J: ${levelJim.value}`, W / 2 + 10, 20)
   c.fillStyle = '#FFF'; c.fillText(`🐕 ${levelDal.value}`, W / 2 + 50, 20)
 
-  // Lives
-  c.textAlign = 'right'; c.font = '14px sans-serif'
-  for (let i = 0; i < 3; i++) {
-    c.fillStyle = i < lives.value ? '#CC2020' : '#3A3A3A'
-    c.fillText('♥', W - 14 - i * 20, 20)
+  // Lives (heart icon + number)
+  c.textAlign = 'right'
+  c.fillStyle = '#CC2020'; c.font = '14px sans-serif'
+  c.fillText('♥', W - 40, 20)
+  c.fillStyle = '#CCC'; c.font = 'bold 13px "Space Grotesk"'
+  c.fillText(`${lives.value}`, W - 14, 20)
+
+  // Level 5 HUD - lives, ammo, items, controls
+  if (currentLevel.value === 5 && gameState.value === 'playing') {
+    // Lives - top right, big
+    c.textAlign = 'right'
+    c.fillStyle = '#CC2020'; c.font = 'bold 16px sans-serif'
+    c.fillText('\u2665', W - 50, 36)
+    c.fillStyle = '#EEE'; c.font = 'bold 16px "Space Grotesk"'
+    c.fillText(`${lives.value}`, W - 14, 36)
+
+    // Ammo - under lives, gold when available
+    c.fillStyle = odinBounces > 0 ? '#F5A623' : '#555'; c.font = 'bold 13px "Space Grotesk"'
+    c.fillText(`Skud: ${odinBounces}`, W - 14, 56)
+    if (odinBounces > 0) {
+      const pulse = 0.5 + Math.sin(time.value * 4) * 0.5
+      c.fillStyle = `rgba(245, 166, 35, ${pulse})`; c.font = 'bold 10px "Space Grotesk"'
+      c.fillText('[ SPACE ]', W - 14, 70)
+    }
+
+    // Items progress - bottom center
+    const remaining = items.filter(i => !i.collected).length
+    const total = items.length
+    const pct = Math.round(((total - remaining) / total) * 100)
+    c.fillStyle = '#AAA'; c.font = '11px "DM Sans"'; c.textAlign = 'center'
+    c.fillText(`${total - remaining}/${total} ramt (${pct}%)`, W / 2, H - 8)
+
+    // Controls (first 8 seconds)
+    if (time.value < 8) {
+      c.fillStyle = 'rgba(200, 150, 150, 0.6)'; c.font = 'bold 14px "DM Sans"'; c.textAlign = 'center'
+      c.fillText('\u2190 \u2192 Styr b\u00e5den', W / 2, H * 0.42)
+      c.fillStyle = 'rgba(200, 150, 150, 0.5)'; c.font = '13px "DM Sans"'
+      c.fillText('Bounce = optjen skud  |  SPACE = Skyd!', W / 2, H * 0.42 + 22)
+    }
   }
 
   // Boss HP bar (works for any boss type)
@@ -2066,26 +3796,179 @@ function render() {
       c.strokeStyle = 'rgba(139, 32, 32, 0.5)'; c.lineWidth = 2
       c.beginPath(); c.roundRect(14, boxY, W - 28, boxH, 14); c.stroke()
 
-      // Jim portrait - BIGGER
-      const portR = 24
-      const portX = 50, portY = boxY + 40
-      // Portrait background circle
-      c.fillStyle = 'rgba(139, 32, 32, 0.15)'; c.beginPath(); c.arc(portX, portY, portR + 4, 0, Math.PI * 2); c.fill()
-      c.fillStyle = '#E0B89A'; c.beginPath(); c.arc(portX, portY, portR, 0, Math.PI * 2); c.fill()
-      // Tattoo
-      c.strokeStyle = '#9E3030'; c.lineWidth = 1.5
-      c.beginPath(); c.moveTo(portX - 14, portY - 6); c.quadraticCurveTo(portX, portY - 22, portX + 14, portY - 6); c.stroke()
-      c.fillStyle = '#9E3030'; c.beginPath(); c.arc(portX, portY - 18, 2, 0, Math.PI * 2); c.fill()
-      // Eyes
-      c.fillStyle = '#6AACDB'
-      c.beginPath(); c.arc(portX - 6, portY - 1, 2.5, 0, Math.PI * 2); c.fill()
-      c.beginPath(); c.arc(portX + 6, portY - 1, 2.5, 0, Math.PI * 2); c.fill()
-      c.fillStyle = '#1A2634'
-      c.beginPath(); c.arc(portX - 6, portY - 1, 1, 0, Math.PI * 2); c.fill()
-      c.beginPath(); c.arc(portX + 6, portY - 1, 1, 0, Math.PI * 2); c.fill()
-      // Mouth
-      c.strokeStyle = '#B08070'; c.lineWidth = 0.8
-      c.beginPath(); c.moveTo(portX - 4, portY + 6); c.lineTo(portX + 4, portY + 6); c.stroke()
+      // ============ JIM LYNGVILD PORTRAIT ============
+      // Ikoniske træk: fuldstændig skaldet, glatbarberet, skarp kæbe,
+      // piercing blå øjne, mørke brune bryn, Celtic-tattoo på hals, ørering
+      const portR = 28
+      const portX = 54, portY = boxY + 42
+      const isLoke = line.speaker === 'loke'
+
+      // Glow bag portrættet (rød for Jim, giftig grøn for Loke)
+      const glowCol = isLoke ? 'rgba(60, 200, 120, 0.25)' : 'rgba(139, 32, 32, 0.2)'
+      const glowGrad = c.createRadialGradient(portX, portY, portR * 0.5, portX, portY, portR + 10)
+      glowGrad.addColorStop(0, glowCol)
+      glowGrad.addColorStop(1, 'transparent')
+      c.fillStyle = glowGrad
+      c.beginPath(); c.arc(portX, portY, portR + 10, 0, Math.PI * 2); c.fill()
+
+      // Hals / skuldre (sort læderjakke — Jims signatur)
+      c.fillStyle = '#0D0D10'
+      c.beginPath()
+      c.moveTo(portX - portR + 2, portY + portR - 4)
+      c.lineTo(portX - portR - 6, portY + portR + 14)
+      c.lineTo(portX + portR + 6, portY + portR + 14)
+      c.lineTo(portX + portR - 2, portY + portR - 4)
+      c.closePath()
+      c.fill()
+      // Læder-highlight
+      c.strokeStyle = 'rgba(255,255,255,0.08)'; c.lineWidth = 1
+      c.beginPath(); c.moveTo(portX - portR - 4, portY + portR + 10); c.lineTo(portX + portR + 4, portY + portR + 10); c.stroke()
+
+      // Halstattoo (Celtic knudedesign) — synlig under kæben
+      c.strokeStyle = isLoke ? '#8B2B4A' : '#3A1515'
+      c.lineWidth = 1.2
+      c.beginPath()
+      c.moveTo(portX - 10, portY + portR - 2)
+      c.quadraticCurveTo(portX - 6, portY + portR + 4, portX, portY + portR)
+      c.quadraticCurveTo(portX + 6, portY + portR + 4, portX + 10, portY + portR - 2)
+      c.stroke()
+
+      // Hoved — æg-form (skaldet, mere pointet end cirkel)
+      c.save()
+      c.translate(portX, portY)
+      c.scale(1, 1.08) // en anelse aflang for skalle-form
+      // Hud base
+      const skinGrad = c.createRadialGradient(-portR * 0.3, -portR * 0.3, 2, 0, 0, portR)
+      skinGrad.addColorStop(0, isLoke ? '#D4C8B8' : '#F2DCC4')
+      skinGrad.addColorStop(0.7, isLoke ? '#B8A590' : '#DDBD9E')
+      skinGrad.addColorStop(1, isLoke ? '#8B7560' : '#A88066')
+      c.fillStyle = skinGrad
+      c.beginPath(); c.arc(0, 0, portR, 0, Math.PI * 2); c.fill()
+      c.restore()
+
+      // Kindskygge (Jim har markerede kindben)
+      c.fillStyle = 'rgba(80, 40, 30, 0.18)'
+      c.beginPath(); c.ellipse(portX - 14, portY + 5, 5, 8, -0.3, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.ellipse(portX + 14, portY + 5, 5, 8, 0.3, 0, Math.PI * 2); c.fill()
+
+      // Skalle-highlight (glans på det skaldede hoved — VIGTIGT for Jim-look)
+      const shineGrad = c.createRadialGradient(portX - 6, portY - portR * 0.65, 0, portX - 6, portY - portR * 0.65, 10)
+      shineGrad.addColorStop(0, 'rgba(255, 250, 240, 0.55)')
+      shineGrad.addColorStop(1, 'transparent')
+      c.fillStyle = shineGrad
+      c.beginPath(); c.ellipse(portX - 4, portY - portR * 0.55, 10, 6, -0.2, 0, Math.PI * 2); c.fill()
+
+      // Pande-tattoo (lille Celtic-rune — subtil)
+      c.strokeStyle = isLoke ? '#D04030' : '#6B2020'
+      c.lineWidth = 1
+      c.beginPath()
+      c.moveTo(portX - 3, portY - portR * 0.75)
+      c.lineTo(portX + 3, portY - portR * 0.75)
+      c.moveTo(portX, portY - portR * 0.78)
+      c.lineTo(portX, portY - portR * 0.68)
+      c.stroke()
+
+      // Øre + sølv-ørering (venstre øre synlig)
+      c.fillStyle = isLoke ? '#B8A590' : '#D8B090'
+      c.beginPath(); c.ellipse(portX - portR + 2, portY + 2, 3, 5, 0, 0, Math.PI * 2); c.fill()
+      c.fillStyle = '#D8D8DC'
+      c.beginPath(); c.arc(portX - portR + 1, portY + 7, 1.5, 0, Math.PI * 2); c.fill()
+      c.fillStyle = '#888'
+      c.beginPath(); c.arc(portX - portR + 1, portY + 7, 0.6, 0, Math.PI * 2); c.fill()
+
+      // Øjenbryn — skarpe, mørke, let bue (Jims signatur)
+      c.strokeStyle = isLoke ? '#1A0808' : '#2A1808'
+      c.lineWidth = 2
+      c.lineCap = 'round'
+      c.beginPath()
+      c.moveTo(portX - 12, portY - 7)
+      c.quadraticCurveTo(portX - 7, portY - 10, portX - 2, portY - 8)
+      c.stroke()
+      c.beginPath()
+      c.moveTo(portX + 2, portY - 8)
+      c.quadraticCurveTo(portX + 7, portY - 10, portX + 12, portY - 7)
+      c.stroke()
+      c.lineCap = 'butt'
+
+      // Øjne — smalle, intense, lysende blå (eller rød-grøn for Loke)
+      // Øjen-hvide
+      c.fillStyle = '#F0EADA'
+      c.beginPath(); c.ellipse(portX - 7, portY - 2, 3.5, 2.2, 0, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.ellipse(portX + 7, portY - 2, 3.5, 2.2, 0, 0, Math.PI * 2); c.fill()
+      // Iris
+      const irisCol = isLoke ? '#C62828' : '#2E7FB8'
+      c.fillStyle = irisCol
+      c.beginPath(); c.arc(portX - 7, portY - 2, 2, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(portX + 7, portY - 2, 2, 0, Math.PI * 2); c.fill()
+      // Pupil
+      c.fillStyle = '#000'
+      c.beginPath(); c.arc(portX - 7, portY - 2, 1, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(portX + 7, portY - 2, 1, 0, Math.PI * 2); c.fill()
+      // Øjenglimt (gør det "intens" look)
+      c.fillStyle = '#FFF'
+      c.beginPath(); c.arc(portX - 7.5, portY - 2.6, 0.5, 0, Math.PI * 2); c.fill()
+      c.beginPath(); c.arc(portX + 6.5, portY - 2.6, 0.5, 0, Math.PI * 2); c.fill()
+      // Løftet øjeglow for Loke
+      if (isLoke) {
+        c.fillStyle = 'rgba(255, 60, 40, 0.4)'
+        c.beginPath(); c.arc(portX - 7, portY - 2, 4, 0, Math.PI * 2); c.fill()
+        c.beginPath(); c.arc(portX + 7, portY - 2, 4, 0, Math.PI * 2); c.fill()
+      }
+
+      // Næse — skarp, lige (Jim har tydelig profil)
+      c.strokeStyle = 'rgba(120, 70, 50, 0.5)'
+      c.lineWidth = 1
+      c.beginPath()
+      c.moveTo(portX, portY - 4)
+      c.lineTo(portX - 1.5, portY + 4)
+      c.lineTo(portX + 1.5, portY + 4)
+      c.stroke()
+
+      // Mund — tynd, stramt sammenpresset (Jim er glatbarberet)
+      c.strokeStyle = '#8B4A3A'
+      c.lineWidth = 1.2
+      c.lineCap = 'round'
+      c.beginPath()
+      if (isLoke) {
+        // Ondt grin for Loke
+        c.moveTo(portX - 6, portY + 10)
+        c.quadraticCurveTo(portX, portY + 14, portX + 6, portY + 10)
+      } else {
+        // Neutral/stramt for Jim
+        c.moveTo(portX - 5, portY + 11)
+        c.lineTo(portX + 5, portY + 11)
+      }
+      c.stroke()
+      c.lineCap = 'butt'
+
+      // Let hagekløft/haglinje for at definere kæben uden skæg
+      c.strokeStyle = 'rgba(80, 40, 30, 0.25)'
+      c.lineWidth = 0.8
+      c.beginPath()
+      c.moveTo(portX, portY + 15)
+      c.lineTo(portX, portY + 17)
+      c.stroke()
+
+      // Horn for Loke (vokser ud af skallen)
+      if (isLoke) {
+        c.fillStyle = '#3A0A0A'
+        c.strokeStyle = '#1A0404'
+        c.lineWidth = 0.8
+        // Venstre horn
+        c.beginPath()
+        c.moveTo(portX - 12, portY - portR + 4)
+        c.quadraticCurveTo(portX - 18, portY - portR - 6, portX - 14, portY - portR - 12)
+        c.quadraticCurveTo(portX - 10, portY - portR - 4, portX - 8, portY - portR + 2)
+        c.closePath()
+        c.fill(); c.stroke()
+        // Højre horn
+        c.beginPath()
+        c.moveTo(portX + 12, portY - portR + 4)
+        c.quadraticCurveTo(portX + 18, portY - portR - 6, portX + 14, portY - portR - 12)
+        c.quadraticCurveTo(portX + 10, portY - portR - 4, portX + 8, portY - portR + 2)
+        c.closePath()
+        c.fill(); c.stroke()
+      }
 
       // Speaker name - BIGGER
       c.fillStyle = '#9E3030'; c.font = 'bold 14px "Space Grotesk"'; c.textAlign = 'left'
@@ -2118,9 +4001,32 @@ function render() {
     }
   }
 
-  // ==================== LEVEL COMPLETE ====================
+  // ==================== LEVEL COMPLETE / GAME COMPLETE ====================
   if (gameState.value === 'levelcomplete') {
     c.fillStyle = 'rgba(5, 10, 5, 0.92)'; c.fillRect(0, 0, W, H)
+
+    if (currentLevel.value === 6) {
+      // GAME COMPLETE - Special Valhalla ending
+      c.fillStyle = '#C9A84C'; c.font = 'bold 28px "Space Grotesk"'; c.textAlign = 'center'
+      c.fillText('LARS OG VEJEN TIL VALHALLA', W / 2, H * 0.18)
+      c.fillStyle = '#8B2020'; c.font = 'bold 20px "Space Grotesk"'
+      c.fillText('GENNEMF\u00d8RT', W / 2, H * 0.18 + 35)
+      c.fillStyle = '#CCC'; c.font = '14px "DM Sans"'
+      c.fillText('Lars fandt vejen ud af Valhalla.', W / 2, H * 0.35)
+      c.fillText('Eller gjorde han?', W / 2, H * 0.35 + 22)
+      c.fillStyle = '#888'; c.font = '13px "DM Sans"'
+      c.fillText(`Final Score: ${score.value}`, W / 2, H * 0.48)
+      c.fillText('Tak for at spille.', W / 2, H * 0.48 + 24)
+      c.fillStyle = '#555'; c.font = '11px "DM Sans"'
+      c.fillText('Skabt af Lars\u2019 venner med k\u00e6rlighed, \u00f8l og Jim Lyngvild.', W / 2, H * 0.56)
+      // Buttons
+      const pp = 0.5 + Math.sin(time.value * 3) * 0.3
+      c.fillStyle = `rgba(201, 168, 76, ${pp})`; c.beginPath(); c.roundRect(W / 2 - 100, H * 0.68, 200, 36, 10); c.fill()
+      c.fillStyle = '#1A1208'; c.font = 'bold 13px "Space Grotesk"'
+      c.fillText('SPIL IGEN', W / 2, H * 0.68 + 22)
+      c.fillStyle = '#666'; c.font = '11px "DM Sans"'
+      c.fillText('(Tryk for at forts\u00e6tte)', W / 2, H * 0.78)
+    } else {
 
     const lvlName = LEVEL_NAMES[currentLevel.value - 1] || ''
     c.fillStyle = '#8B2020'; c.font = 'bold 22px "Space Grotesk"'; c.textAlign = 'center'
@@ -2144,6 +4050,7 @@ function render() {
     c.beginPath(); c.roundRect(W / 2 - 100, H * 0.76, 200, 36, 10); c.fill()
     c.fillStyle = '#EEE'; c.font = 'bold 13px "Space Grotesk"'
     c.fillText('TRYK FOR AT FORTS\u00c6TTE \u25b8', W / 2, H * 0.76 + 21)
+    } // end else (non-level-6 levelcomplete)
   }
 
   // ==================== PAUSE ====================
@@ -2170,30 +4077,39 @@ function render() {
 
     // Blood-red title
     c.fillStyle = '#8B2020'; c.font = 'bold 32px "Space Grotesk"'; c.textAlign = 'center'
-    c.fillText('FALDET', W / 2, H * 0.28)
+    c.fillText('FALDET', W / 2, H * 0.26)
 
     // Jim's death quote - SINGLE, LARGE, READABLE
     c.fillStyle = '#BBBBBB'; c.font = 'italic 16px "DM Sans"'
-    c.fillText(`"${deathQuote}"`, W / 2, H * 0.28 + 50)
+    c.fillText(`"${deathQuote}"`, W / 2, H * 0.26 + 44)
 
     // Jim attribution
     c.fillStyle = '#8B2020'; c.font = 'bold 10px "Space Grotesk"'
-    c.fillText('— JIM', W / 2, H * 0.28 + 75)
+    c.fillText('— JIM', W / 2, H * 0.26 + 68)
 
-    // Score
+    // Reassurance: you only restart THIS chapter, not the whole game
+    const lvlName = LEVEL_NAMES[currentLevel.value - 1] || ''
+    c.fillStyle = '#C9A84C'; c.font = 'bold 16px "Space Grotesk"'
+    c.fillText(`Du vender tilbage til Kapitel ${currentLevel.value}`, W / 2, H * 0.46)
+    c.fillStyle = '#888'; c.font = '13px "DM Sans"'
+    c.fillText(`"${lvlName}"`, W / 2, H * 0.46 + 22)
+
+    // Score preserved
     c.fillStyle = '#CCC'; c.font = 'bold 18px "Space Grotesk"'
-    c.fillText(`Score: ${score.value}`, W / 2, H * 0.55)
+    c.fillText(`Score: ${score.value}`, W / 2, H * 0.58)
+    c.fillStyle = '#666'; c.font = '11px "DM Sans"'
+    c.fillText('(Din score bevares)', W / 2, H * 0.58 + 18)
 
     // Retry button (only after delay)
     if (deadDelay <= 0) {
       const pulse = 0.5 + Math.sin(time.value * 3) * 0.3
       c.fillStyle = `rgba(139, 32, 32, ${pulse})`
-      c.beginPath(); c.roundRect(W / 2 - 90, H * 0.66, 180, 40, 10); c.fill()
+      c.beginPath(); c.roundRect(W / 2 - 120, H * 0.7, 240, 42, 10); c.fill()
       c.fillStyle = '#EEE'; c.font = 'bold 14px "Space Grotesk"'
-      c.fillText('PRØV IGEN', W / 2, H * 0.66 + 24)
+      c.fillText(`TILBAGE TIL KAPITEL ${currentLevel.value}`, W / 2, H * 0.7 + 25)
     } else {
       c.fillStyle = '#444'; c.font = '12px "DM Sans"'
-      c.fillText('Vent...', W / 2, H * 0.7)
+      c.fillText('Vent...', W / 2, H * 0.72)
     }
   }
 
@@ -2229,6 +4145,110 @@ function render() {
 
     c.fillStyle = '#555'; c.font = '12px "DM Sans"'
     c.fillText('Space / Klik / Tap', W / 2, H * 0.55 + 28)
+
+    // Highscore display (Fase 8)
+    if (highscore.value > 0) {
+      c.fillStyle = '#C9A84C'; c.font = 'bold 14px "Space Grotesk"'
+      c.fillText(`Rekord: ${highscore.value}`, W / 2, H * 0.68)
+    }
+  }
+
+  // ==================== CREDITS SCROLL (Fase 8) ====================
+  if (gameState.value === 'credits') {
+    // Deep night sky background
+    const g = c.createLinearGradient(0, 0, 0, H)
+    g.addColorStop(0, '#0a0512')
+    g.addColorStop(0.5, '#1a0a20')
+    g.addColorStop(1, '#0a0612')
+    c.fillStyle = g; c.fillRect(0, 0, W, H)
+
+    // Stars
+    for (let i = 0; i < 80; i++) {
+      const sx = (i * 137 + time.value * 3) % W
+      const sy = (i * 91) % H
+      const twinkle = 0.3 + Math.sin(time.value * 2 + i) * 0.3
+      c.fillStyle = `rgba(255, 240, 200, ${twinkle})`
+      c.fillRect(sx, sy, 1.5, 1.5)
+    }
+
+    // Flying ravens (simple silhouettes)
+    for (let i = 0; i < 4; i++) {
+      const rx = ((time.value * 20 + i * 300) % (W + 200)) - 100
+      const ry = 80 + i * 50 + Math.sin(time.value * 2 + i) * 15
+      c.fillStyle = '#000'
+      c.save()
+      c.translate(rx, ry)
+      const flap = Math.sin(time.value * 8 + i) * 6
+      c.beginPath()
+      c.moveTo(0, 0)
+      c.lineTo(-12, -4 - flap)
+      c.lineTo(-8, 0)
+      c.lineTo(-12, 4 + flap)
+      c.lineTo(0, 0)
+      c.lineTo(12, -4 - flap)
+      c.lineTo(8, 0)
+      c.lineTo(12, 4 + flap)
+      c.fill()
+      c.restore()
+    }
+
+    // Credits text (scrolls up)
+    creditsScrollY += 25 * (1 / 60)
+    const CREDITS_LINES: { text: string; size: number; color: string; bold?: boolean; gap: number }[] = [
+      { text: 'LARS OG VEJEN TIL VALHALLA', size: 32, color: '#C9A84C', bold: true, gap: 60 },
+      { text: '', size: 14, color: '#fff', gap: 40 },
+      { text: 'Lars har besejret Loke og er vendt hjem.', size: 16, color: '#ddd', gap: 30 },
+      { text: 'Ravnene flyver over Midgård, og mjøden flyder.', size: 16, color: '#ddd', gap: 80 },
+      { text: '— MEDVIRKENDE —', size: 18, color: '#C9A84C', bold: true, gap: 50 },
+      { text: 'Lars Grundvad', size: 22, color: '#fff', bold: true, gap: 4 },
+      { text: 'som Sig Selv', size: 14, color: '#aaa', gap: 40 },
+      { text: 'Jim Lyngvild', size: 22, color: '#fff', bold: true, gap: 4 },
+      { text: 'som Sig Selv', size: 14, color: '#aaa', gap: 40 },
+      { text: 'Loke', size: 22, color: '#fff', bold: true, gap: 4 },
+      { text: 'som Jim Lyngvild', size: 14, color: '#aaa', gap: 40 },
+      { text: 'Odin Alfader', size: 20, color: '#fff', bold: true, gap: 4 },
+      { text: 'som Kongen af Valhalla', size: 14, color: '#aaa', gap: 40 },
+      { text: 'Surtr, Hjortemanden, Draugr & Sinmara', size: 18, color: '#fff', gap: 4 },
+      { text: 'som Fjenderne', size: 14, color: '#aaa', gap: 80 },
+      { text: '— INSPIRATION —', size: 18, color: '#C9A84C', bold: true, gap: 50 },
+      { text: 'Nordisk Mytologi', size: 16, color: '#ddd', gap: 25 },
+      { text: 'Porsche 911', size: 16, color: '#ddd', gap: 25 },
+      { text: 'Danske Sofa-Søndage', size: 16, color: '#ddd', gap: 80 },
+      { text: '— SKABT AF —', size: 18, color: '#C9A84C', bold: true, gap: 50 },
+      { text: 'Simon & Claude', size: 22, color: '#fff', bold: true, gap: 4 },
+      { text: '2026', size: 14, color: '#aaa', gap: 80 },
+      { text: 'Tak fordi du spillede.', size: 18, color: '#C9A84C', gap: 40 },
+      { text: `Rekord: ${highscore.value}`, size: 16, color: '#fff', gap: 80 },
+      { text: 'TRYK FOR AT SPILLE IGEN', size: 14, color: '#888', gap: 200 },
+    ]
+    c.textAlign = 'center'
+    let yOffset = H - creditsScrollY
+    for (const line of CREDITS_LINES) {
+      if (yOffset > -40 && yOffset < H + 40) {
+        c.fillStyle = line.color
+        c.font = `${line.bold ? 'bold ' : ''}${line.size}px "Space Grotesk"`
+        c.fillText(line.text, W / 2, yOffset)
+      }
+      yOffset += line.size + line.gap
+    }
+    // Loop credits
+    if (creditsScrollY > H + 2000) creditsScrollY = 0
+  }
+
+  // ==================== LEVEL TRANSITION FADE (Fase 6) ====================
+  // Drawn on top of everything (incl HUD) for seamless act transitions
+  if (levelFade > 0) {
+    c.fillStyle = `rgba(6, 4, 10, ${Math.min(1, levelFade)})`
+    c.fillRect(0, 0, W, H)
+    // "Videre, Lars..." bridge text at peak darkness
+    if (levelFade > 0.5) {
+      c.globalAlpha = Math.min(1, (levelFade - 0.5) * 2)
+      c.fillStyle = '#C9A84C'
+      c.font = 'bold 20px "Space Grotesk"'
+      c.textAlign = 'center'
+      c.fillText('Videre, Lars...', W / 2, H * 0.5)
+      c.globalAlpha = 1
+    }
   }
 }
 
@@ -2236,6 +4256,9 @@ function render() {
 function onKeyDown(e: KeyboardEvent) {
   keysDown.add(e.code)
   if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); tapped = true }
+
+  // Cutscene advance - only on initial keydown, NOT on key repeat
+  if (gameState.value === 'cutscene' && !e.repeat) { e.preventDefault(); advanceCutscene(); return }
 
   // PAUSE (Escape or P)
   if (e.code === 'Escape' || e.code === 'KeyP') {
@@ -2247,11 +4270,12 @@ function onKeyDown(e: KeyboardEvent) {
     return
   }
 
+  if (e.repeat) return // Ignore key repeats for all state transitions
   if (gameState.value === 'paused') { gameState.value = 'playing'; return }
-  if (gameState.value === 'cutscene') { e.preventDefault(); advanceCutscene() }
-  else if (gameState.value === 'loading') { startGame() }
+  if (gameState.value === 'loading') { startGame() }
   else if (gameState.value === 'dead' && deadDelay <= 0) { resetLevel() }
   else if (gameState.value === 'levelcomplete') { advanceLevel() }
+  else if (gameState.value === 'credits' && creditsScrollY > 200) { restartFromCredits() }
 }
 
 function onKeyUp(e: KeyboardEvent) { keysDown.delete(e.code) }
@@ -2263,6 +4287,7 @@ function onTouchStart(e: TouchEvent) {
   else if (gameState.value === 'loading') startGame()
   else if (gameState.value === 'dead' && deadDelay <= 0) resetLevel()
   else if (gameState.value === 'levelcomplete') gameState.value = 'loading'
+  else if (gameState.value === 'credits' && creditsScrollY > 200) restartFromCredits()
 }
 
 function onMouseDown() {
@@ -2271,6 +4296,16 @@ function onMouseDown() {
   else if (gameState.value === 'loading') startGame()
   else if (gameState.value === 'dead' && deadDelay <= 0) resetLevel()
   else if (gameState.value === 'levelcomplete') gameState.value = 'loading'
+  else if (gameState.value === 'credits' && creditsScrollY > 200) restartFromCredits()
+}
+
+function restartFromCredits() {
+  creditsScrollY = 0
+  currentLevel.value = 1
+  lives.value = 10
+  score.value = 0
+  loadLevelImages(1)
+  gameState.value = 'loading'
 }
 
 // ==================== GAME LIFECYCLE ====================
@@ -2297,25 +4332,45 @@ function initLevel() {
   else if (currentLevel.value === 2) buildLevel2()
   else if (currentLevel.value === 3) buildLevel3()
   else if (currentLevel.value === 4) buildLevel4()
+  else if (currentLevel.value === 5) buildLevel5()
+  else if (currentLevel.value === 6) buildLevel6()
 
   gameState.value = 'playing'
 }
 
 function resetLevel() {
-  lives.value = 3; score.value = 0
+  // Du ryger KUN tilbage til start af nuværende kapitel — aldrig til kapitel 1.
+  // Score og totale progress fra tidligere kapitler bevares.
+  lives.value = 10
   initLevel()
 }
 
 function advanceLevel() {
+  if (pendingLevelAdvance) return
+  // Persist highscore on every level advance (Fase 8)
+  maybeSaveHighscore()
+  // Start fade-out transition
+  pendingLevelAdvance = true
+  levelFadeDir = -1
+  levelFade = 0
+}
+
+function doActualAdvanceLevel() {
   currentLevel.value++
   if (currentLevel.value > 6) {
-    gameState.value = 'loading' // Victory - placeholder
+    gameState.value = 'credits'
+    creditsScrollY = 0
+    pendingLevelAdvance = false
     return
   }
   loadLevelImages(currentLevel.value)
   initLevel()
   const dialog = getLevelDialog('intro')
   if (dialog) startCutscene(dialog, () => { gameState.value = 'playing' })
+  // Start fade-in
+  levelFadeDir = 1
+  levelFade = 1
+  pendingLevelAdvance = false
 }
 
 function getLevelDialog(key: string) {
@@ -2325,6 +4380,10 @@ function getLevelDialog(key: string) {
 }
 
 function loadLevelImages(lvl: number) {
+  // Clear old images first so fallback gradient shows while loading
+  bgFar.value = null
+  bgMid.value = null
+  bgNear.value = null
   const prefix = `/images/valhalla/level${lvl}-bg`
   const far = new Image(); far.src = `${prefix}-far.jpg`
   far.onload = () => { bgFar.value = far }
@@ -2343,7 +4402,24 @@ function gameLoop(timestamp: number) {
   animFrame = requestAnimationFrame(gameLoop)
 }
 
+// Highscore helpers (Fase 8)
+function loadHighscore() {
+  if (typeof window === 'undefined') return
+  const raw = window.localStorage.getItem('valhalla-highscore')
+  const n = Number(raw)
+  highscore.value = Number.isFinite(n) && n > 0 ? n : 0
+}
+
+function maybeSaveHighscore() {
+  if (typeof window === 'undefined') return
+  if (score.value > highscore.value) {
+    highscore.value = score.value
+    window.localStorage.setItem('valhalla-highscore', String(score.value))
+  }
+}
+
 onMounted(() => {
+  loadHighscore()
   setTimeout(() => {
     initCanvas()
 
@@ -2360,14 +4436,20 @@ onMounted(() => {
     else if (currentLevel.value === 2) buildLevel2()
     else if (currentLevel.value === 3) buildLevel3()
     else if (currentLevel.value === 4) buildLevel4()
+    else if (currentLevel.value === 5) buildLevel5()
+    else if (currentLevel.value === 6) buildLevel6()
 
-    window.addEventListener('keydown', onKeyDown)
-    window.addEventListener('keyup', onKeyUp)
-    canvasRef.value?.addEventListener('touchstart', onTouchStart, { passive: false })
-    canvasRef.value?.addEventListener('mousedown', onMouseDown)
+    // Events handled via Vue template (@keydown, @click on game container div)
+    // Auto-focus the game container so keyboard events work immediately
+    nextTick(() => {
+      if (gameContainerRef.value) gameContainerRef.value.focus()
+    })
 
     lastTime = performance.now()
     animFrame = requestAnimationFrame(gameLoop)
+
+    // Level 5 uses the same loading → startGame() flow as all other levels
+    // No special auto-start needed
   }, 100)
 })
 
@@ -2395,8 +4477,23 @@ onUnmounted(() => {
         <Icon :name="gameState === 'paused' ? 'mdi:play' : 'mdi:pause'" size="18" />
       </button>
     </div>
-    <div class="flex-1 relative">
+    <div
+      class="flex-1 relative outline-none"
+      tabindex="0"
+      ref="gameContainerRef"
+      @keydown="onKeyDown"
+      @keyup="onKeyUp"
+      @click="onMouseDown"
+      @mousedown="onMouseDown"
+      @touchstart.prevent="onTouchStart"
+    >
       <canvas ref="canvasRef" class="w-full h-full block touch-none" />
+      <!-- Invisible click catcher for cutscene/loading - ensures clicks always register -->
+      <div
+        v-if="gameState === 'cutscene' || gameState === 'loading' || gameState === 'dead' || gameState === 'levelcomplete'"
+        class="absolute inset-0 z-10 cursor-pointer"
+        @click="gameState === 'cutscene' ? advanceCutscene() : gameState === 'loading' ? startGame() : gameState === 'dead' && deadDelay <= 0 ? resetLevel() : gameState === 'levelcomplete' ? advanceLevel() : null"
+      />
     </div>
   </div>
 </template>

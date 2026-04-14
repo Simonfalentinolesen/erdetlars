@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gradient-main overflow-hidden">
+  <div class="min-h-screen bg-gradient-main overflow-x-hidden">
     <NuxtPage />
   </div>
 </template>
