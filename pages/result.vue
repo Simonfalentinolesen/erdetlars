@@ -7,7 +7,8 @@ const router = useRouter()
 const { state, startGame, getScoreComment } = useGame()
 const { getResultQuote } = useJim()
 const { pickById, pickRandom } = useMinigamePromo()
-const { playPerfect, playStreak } = useSound()
+const { playPerfect, playStreak, playTap } = useSound()
+const { shareCard } = useShareCard()
 
 const resultDifficulty = computed(() => {
   const id = state.value.lastResult?.difficulty ?? state.value.difficulty
@@ -136,18 +137,59 @@ function playAgain() {
   router.push('/play')
 }
 
-async function shareResult() {
+// Share-card: bygger 1080x1080 PNG og deler via Web Share API Level 2 hvis muligt
+const shareStatus = ref<'idle' | 'building' | 'shared' | 'downloaded' | 'copied' | 'failed'>('idle')
+
+async function shareResultCard() {
   const r = result.value
-  if (!r) return
-  const text = `Jeg scorede ${r.score} point på ErDetLars.dk! ${r.correct}/${r.totalSwiped} korrekte efter ${r.totalSwiped} swipes. Kan du gøre det bedre? 🔥`
-  if (navigator.share) {
-    try {
-      await navigator.share({ text, url: 'https://erdetlars.dk' })
-    } catch {}
-  } else {
-    await navigator.clipboard.writeText(text)
+  if (!r || shareStatus.value === 'building') return
+  playTap()
+  shareStatus.value = 'building'
+  try {
+    const outcome = await shareCard({
+      score: r.score,
+      correct: r.correct,
+      wrong: r.wrong,
+      totalSwiped: r.totalSwiped,
+      bestStreak: r.bestStreak,
+      isPerfect: r.isPerfect,
+      difficulty: r.difficulty ?? state.value.difficulty,
+      nickname: state.value.nickname || undefined,
+    })
+    shareStatus.value = outcome
+    setTimeout(() => { shareStatus.value = 'idle' }, 2500)
+  } catch {
+    shareStatus.value = 'failed'
+    setTimeout(() => { shareStatus.value = 'idle' }, 2500)
   }
 }
+
+// Tekst-fallback til delknap nederst (kopierer link/tekst)
+async function copyShareText() {
+  const r = result.value
+  if (!r) return
+  playTap()
+  const text = `Jeg scorede ${r.score} point på ErDetLars.dk! ${r.correct}/${r.totalSwiped} korrekte. Kan du gøre det bedre? 🍺 https://erdetlars.dk`
+  try {
+    await navigator.clipboard.writeText(text)
+    shareStatus.value = 'copied'
+    setTimeout(() => { shareStatus.value = 'idle' }, 2500)
+  } catch {
+    shareStatus.value = 'failed'
+    setTimeout(() => { shareStatus.value = 'idle' }, 2500)
+  }
+}
+
+const shareLabel = computed(() => {
+  switch (shareStatus.value) {
+    case 'building': return 'Bygger kort...'
+    case 'shared': return 'Delt!'
+    case 'downloaded': return 'Hentet — del det selv!'
+    case 'copied': return 'Kopieret!'
+    case 'failed': return 'Prøv igen'
+    default: return 'Del mit kort'
+  }
+})
 </script>
 
 <template>
@@ -256,11 +298,26 @@ async function shareResult() {
       </button>
 
       <button
-        class="w-full py-3.5 rounded-2xl glass text-white font-heading font-semibold text-base hover:bg-white/10 transition-colors btn-press"
-        @click="shareResult"
+        class="w-full py-3.5 rounded-2xl glass text-white font-heading font-semibold text-base hover:bg-white/10 transition-colors btn-press disabled:opacity-60"
+        :disabled="shareStatus === 'building'"
+        @click="shareResultCard"
       >
-        <Icon name="mdi:share-variant" size="18" class="mr-2" />
-        Del resultat
+        <Icon
+          :name="shareStatus === 'shared' || shareStatus === 'downloaded' ? 'mdi:check-circle' : shareStatus === 'building' ? 'mdi:loading' : 'mdi:image-multiple'"
+          size="18"
+          class="mr-2"
+          :class="{ 'animate-spin': shareStatus === 'building' }"
+        />
+        {{ shareLabel }}
+      </button>
+
+      <!-- Sekundær: ren tekst-deling for desktop / tilfælde uden Web Share -->
+      <button
+        class="w-full py-2.5 rounded-xl text-muted text-xs font-body hover:text-white transition-colors flex items-center justify-center gap-1.5"
+        @click="copyShareText"
+      >
+        <Icon name="mdi:link-variant" size="14" />
+        {{ shareStatus === 'copied' ? 'Link kopieret!' : 'Eller kopier delelink' }}
       </button>
 
       <div class="flex gap-3">
