@@ -61,6 +61,90 @@ const teaserPromo = ref<ReturnType<typeof shouldShowTeaser>>(null)
 const interstitialPromo = ref<ReturnType<typeof shouldShowInterstitial>>(null)
 const interstitialCopy = ref<{ headline: string; sub: string } | null>(null)
 
+// ==================== KVIT ELLER DOBBELT ====================
+// Every 12th swipe: show the card extreme-zoomed into center, 2x points if right, -150 if wrong.
+// `isDoubleOrNothing` is a pre-swipe flag — true while the CURRENT card is a DoN card.
+const isDoubleOrNothing = computed(() => {
+  // After N answers, the NEXT swipe will be #(N+1). Trigger at 12, 24, 36...
+  return (localAnswerCount.value + 1) % 12 === 0 && localAnswerCount.value + 1 > 0
+})
+
+// ==================== EVOLVING DESIGN ====================
+// Streak-based intensity tier (0-5). Drives background, border, confetti scale.
+const streakTier = computed(() => {
+  const s = state.value.streak
+  if (s >= 30) return 5
+  if (s >= 20) return 4
+  if (s >= 10) return 3
+  if (s >= 5) return 2
+  if (s >= 3) return 1
+  return 0
+})
+
+// ==================== FULLSCREEN OVERLAY COORDINATOR ====================
+// When any fullscreen overlay is showing, smaller toasts hide so they don't stack on top.
+const hasFullscreenOverlay = computed(() =>
+  showFact.value ||
+  !!interstitialPromo.value ||
+  activePrank.value?.type === 'jim-rant'
+)
+
+// ==================== PROGRESSIVE CONFETTI ====================
+// Ramps from a tiny pop at streak 3 → full rainbow firework show at streak 30+.
+function fireConfetti(correct: boolean, isDoNWin = false) {
+  if (!correct) return
+
+  const s = state.value.streak
+  const baseColors = ['#F5A623', '#00D68F', '#E84393', '#FFFFFF']
+  const rainbow = ['#FF0080', '#FF8C00', '#FFD700', '#00E5FF', '#8A2BE2', '#00FF7F', '#FF1493']
+
+  // DoN win always gets a celebration, regardless of streak
+  if (isDoNWin) {
+    confetti({ particleCount: 150, spread: 140, origin: { y: 0.5 }, colors: rainbow, startVelocity: 70 })
+    setTimeout(() => {
+      confetti({ particleCount: 100, spread: 160, startVelocity: 80, shapes: ['star'], colors: ['#FFD700', '#FF1493'], origin: { y: 0.4 } })
+    }, 180)
+    playStreak()
+    return
+  }
+
+  if (s < 3) return
+
+  if (s < 5) {
+    // Tier 1: tiny pop
+    confetti({ particleCount: 30, spread: 40, origin: { y: 0.7 }, colors: baseColors })
+  } else if (s < 10) {
+    // Tier 2: bigger pop + golden stars
+    confetti({ particleCount: 70, spread: 75, origin: { y: 0.6 }, colors: baseColors })
+    confetti({ particleCount: 25, spread: 100, startVelocity: 55, shapes: ['star'], colors: ['#FFD700', '#FFA500'], origin: { y: 0.6 } })
+    playStreak()
+  } else if (s < 20) {
+    // Tier 3: rainbow blast + delayed star burst
+    confetti({ particleCount: 110, spread: 100, origin: { y: 0.6 }, colors: rainbow })
+    setTimeout(() => confetti({ particleCount: 60, spread: 140, startVelocity: 65, shapes: ['star'], colors: ['#FFD700', '#FF1493'], origin: { y: 0.4 } }), 180)
+    playStreak()
+  } else if (s < 30) {
+    // Tier 4: side cannons + center star fountain
+    confetti({ particleCount: 130, angle: 60, spread: 75, origin: { x: 0, y: 0.7 }, colors: rainbow, startVelocity: 70 })
+    confetti({ particleCount: 130, angle: 120, spread: 75, origin: { x: 1, y: 0.7 }, colors: rainbow, startVelocity: 70 })
+    setTimeout(() => confetti({ particleCount: 100, spread: 160, startVelocity: 75, shapes: ['star'], colors: ['#FFD700', '#FF1493', '#00E5FF'], origin: { y: 0.3 } }), 220)
+    playStreak()
+  } else {
+    // Tier 5: FULL CHAOS — 2s rolling side cannons + massive star fountain
+    const end = Date.now() + 2000
+    const frame = () => {
+      confetti({ particleCount: 10, angle: 60, spread: 60, origin: { x: 0 }, colors: rainbow, startVelocity: 75 })
+      confetti({ particleCount: 10, angle: 120, spread: 60, origin: { x: 1 }, colors: rainbow, startVelocity: 75 })
+      if (Date.now() < end) requestAnimationFrame(frame)
+    }
+    frame()
+    setTimeout(() => {
+      confetti({ particleCount: 250, spread: 170, startVelocity: 85, shapes: ['star'], colors: ['#FFD700', '#FF1493', '#00E5FF', '#FF8C00'], origin: { y: 0.2 } })
+    }, 400)
+    playStreak()
+  }
+}
+
 function dismissTeaser() {
   markTeaserDismissed()
   teaserPromo.value = null
@@ -204,6 +288,9 @@ async function processAnswer(guessedLars: boolean) {
   const image = getCurrentImage()
   if (!image) return
 
+  // Capture Kvit-eller-dobbelt state BEFORE answer() increments the counter
+  const wasDoN = isDoubleOrNothing.value
+
   const result = answer(guessedLars)
   const wasCorrect = result.correct
 
@@ -216,11 +303,27 @@ async function processAnswer(guessedLars: boolean) {
     state.value.score = Math.max(0, state.value.score + (finalPoints - result.points))
   }
 
-  // Determine what Jim says this round — priority: shield > streak milestone > regular quote
+  // Determine what Jim says this round — priority: DoN > shield > streak milestone > regular quote
   let jimSays = wasCorrect ? getCorrectQuote() : getWrongQuote()
 
-  // Shield: if wrong, restore streak + override quote
-  if (!wasCorrect) {
+  // Kvit eller dobbelt: doubles winnings, crushes losses
+  if (wasDoN) {
+    if (wasCorrect) {
+      // Original answer() already added base. Add another equal chunk to make it 2x total.
+      const extra = finalPoints
+      finalPoints = finalPoints * 2
+      state.value.score = Math.max(0, state.value.score + extra)
+      jimSays = '🔥 KVIT ELLER DOBBELT — DU VANDT! 2X POINT!'
+    } else {
+      // Extra penalty: remove another 100 on top of the -50 already applied
+      state.value.score = Math.max(0, state.value.score - 100)
+      finalPoints = -150
+      jimSays = '💀 KVIT ELLER DOBBELT — DU TABTE! -150'
+    }
+  }
+
+  // Shield: if wrong (and not DoN loss, which is too brutal to shield), restore streak + override quote
+  if (!wasCorrect && !wasDoN) {
     const shielded = consumeShield()
     if (shielded) {
       // The answer() call already reset streak to 0. Revert:
@@ -261,23 +364,14 @@ async function processAnswer(guessedLars: boolean) {
   jimToastQuote.value = jimSays
   showJimToast.value = true
 
-  // Sound + confetti
+  // Sound + progressive confetti
   if (wasCorrect) {
     playCorrect()
-    if (state.value.streak >= 5) {
-      confetti({
-        particleCount: state.value.streak * 10,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ['#F5A623', '#00D68F', '#E84393', '#FFFFFF'],
-      })
-      playStreak()
-    }
+    fireConfetti(true, wasDoN)
 
     // Award power-up every 5 in a row
     if (state.value.streak > 0 && state.value.streak % 5 === 0) {
-      const pickedUp = awardRandom()
-      // Let existing toast show, then supplement
+      awardRandom()
     }
   } else {
     playWrong()
@@ -363,7 +457,14 @@ const rightLabel = computed(() => buttonsSwapped.value ? 'Ikke Lars' : 'Det er L
 </script>
 
 <template>
-  <div v-if="state.screen === 'playing'" class="h-screen flex flex-col relative overflow-hidden">
+  <div
+    v-if="state.screen === 'playing'"
+    class="h-screen flex flex-col relative overflow-hidden"
+    :class="`streak-tier-${streakTier}`"
+  >
+    <!-- Evolving background FX (intensifies with streak) -->
+    <div class="streak-bg-fx pointer-events-none" aria-hidden="true" />
+
     <!-- Top bar -->
     <div class="flex items-center justify-between px-4 pt-3 pb-1 safe-top">
       <div class="flex items-center gap-2">
@@ -410,7 +511,11 @@ const rightLabel = computed(() => buttonsSwapped.value ? 'Ikke Lars' : 'Det er L
       <!-- Hint zoom wrapper -->
       <div
         class="relative transition-transform duration-300"
-        :class="{ 'hint-zoom': hintActive, 'card-blur-prank': cardBlurred }"
+        :class="{
+          'hint-zoom': hintActive,
+          'card-blur-prank': cardBlurred,
+          'don-zoom': isDoubleOrNothing,
+        }"
       >
         <!-- Active card -->
         <SwipeCard
@@ -423,6 +528,21 @@ const rightLabel = computed(() => buttonsSwapped.value ? 'Ikke Lars' : 'Det er L
           @swipe-right="handleSwipeAnswer(true)"
         />
       </div>
+
+      <!-- KVIT ELLER DOBBELT banner -->
+      <Transition name="don-intro">
+        <div
+          v-if="isDoubleOrNothing"
+          class="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none flex flex-col items-center gap-1.5"
+        >
+          <div class="don-banner">
+            <Icon name="mdi:star-four-points" size="12" />
+            KVIT ELLER DOBBELT
+            <Icon name="mdi:star-four-points" size="12" />
+          </div>
+          <p class="don-subtitle">Er det Lars? 2× points · forkert = -150</p>
+        </div>
+      </Transition>
 
       <!-- Hint indicator badge -->
       <div
@@ -438,7 +558,7 @@ const rightLabel = computed(() => buttonsSwapped.value ? 'Ikke Lars' : 'Det er L
       <!-- Collection unlock toast (bottom-right of card) -->
       <Transition name="unlock-toast">
         <div
-          v-if="unlockedCardToast"
+          v-if="unlockedCardToast && !hasFullscreenOverlay"
           class="absolute top-4 right-4 glass rounded-xl px-3 py-2 flex items-center gap-2 border border-accent/40 shadow-glow pointer-events-none z-20"
         >
           <Icon name="mdi:star-plus" size="14" class="text-accent" />
@@ -458,7 +578,7 @@ const rightLabel = computed(() => buttonsSwapped.value ? 'Ikke Lars' : 'Det er L
     <div class="px-4 py-1 min-h-[50px] flex items-center justify-center relative">
       <Transition name="jim-bubble">
         <div
-          v-if="showJimToast"
+          v-if="showJimToast && !hasFullscreenOverlay"
           :key="jimToastQuote"
           class="flex items-center gap-2.5 max-w-sm w-full rounded-2xl px-3 py-2.5 relative jim-speech-bubble"
           :class="feedbackCorrect ? 'bg-success/15 border border-success/30' : 'bg-error/15 border border-error/30'"
@@ -569,9 +689,9 @@ const rightLabel = computed(() => buttonsSwapped.value ? 'Ikke Lars' : 'Det er L
     <!-- Achievement toasts -->
     <AchievementToast />
 
-    <!-- Minigame teaser (light touch, dismissable) -->
+    <!-- Minigame teaser (light touch, dismissable) — suppressed during fullscreen overlays -->
     <MinigameTeaser
-      :promo="teaserPromo"
+      :promo="hasFullscreenOverlay ? null : teaserPromo"
       @dismiss="dismissTeaser"
       @play="playTeaser"
     />
@@ -666,4 +786,135 @@ const rightLabel = computed(() => buttonsSwapped.value ? 'Ikke Lars' : 'Det er L
 .unlock-toast-leave-active { transition: all 0.3s ease-in; }
 .unlock-toast-enter-from { opacity: 0; transform: translateX(30px) scale(0.8); }
 .unlock-toast-leave-to { opacity: 0; transform: translateX(20px); }
+
+/* ==================== KVIT ELLER DOBBELT ==================== */
+/* Extreme zoom into the center of the card's image/video */
+.don-zoom :deep(img),
+.don-zoom :deep(video) {
+  transform: scale(4.8);
+  transition: transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+  filter: contrast(1.08) saturate(1.15);
+}
+.don-zoom {
+  animation: don-card-pulse 2s ease-in-out infinite;
+  box-shadow: 0 0 60px rgba(232, 67, 147, 0.35);
+  border-radius: 1.5rem;
+}
+@keyframes don-card-pulse {
+  0%, 100% { filter: brightness(1); box-shadow: 0 0 40px rgba(232, 67, 147, 0.3); }
+  50% { filter: brightness(1.08); box-shadow: 0 0 75px rgba(232, 67, 147, 0.55); }
+}
+
+.don-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(90deg, #E84393, #F5A623, #E84393, #F5A623);
+  background-size: 300% 100%;
+  color: #1A1A20;
+  padding: 7px 18px;
+  border-radius: 999px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 900;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  animation: don-shimmer 1.4s linear infinite;
+  box-shadow: 0 0 28px rgba(232, 67, 147, 0.65), 0 6px 18px rgba(0,0,0,0.4);
+  white-space: nowrap;
+}
+.don-subtitle {
+  color: rgba(255, 255, 255, 0.85);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  background: rgba(20, 20, 28, 0.8);
+  padding: 3px 10px;
+  border-radius: 999px;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(232, 67, 147, 0.3);
+}
+
+@keyframes don-shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 300% 50%; }
+}
+
+.don-intro-enter-active { transition: all 0.45s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.don-intro-leave-active { transition: all 0.25s ease-in; }
+.don-intro-enter-from { opacity: 0; transform: translate(-50%, -18px) scale(0.6); }
+.don-intro-leave-to { opacity: 0; transform: translate(-50%, 10px) scale(0.9); }
+
+/* ==================== EVOLVING STREAK BACKGROUND ==================== */
+/* Root wrapper gets its own stacking context so bg-fx can sit at z-index -1
+   without leaking behind the html element — keeps sibling components intact. */
+[class*='streak-tier-'] {
+  isolation: isolate;
+}
+.streak-bg-fx {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.6s ease, filter 0.6s ease;
+  pointer-events: none;
+}
+.streak-tier-0 .streak-bg-fx { opacity: 0; }
+
+.streak-tier-1 .streak-bg-fx {
+  opacity: 1;
+  background: radial-gradient(circle at 50% 50%, rgba(245, 166, 35, 0.08), transparent 60%);
+}
+
+.streak-tier-2 .streak-bg-fx {
+  opacity: 1;
+  background:
+    radial-gradient(circle at 30% 35%, rgba(245, 166, 35, 0.12), transparent 55%),
+    radial-gradient(circle at 70% 65%, rgba(0, 214, 143, 0.1), transparent 55%);
+  animation: streak-pulse 3.2s ease-in-out infinite;
+}
+
+.streak-tier-3 .streak-bg-fx {
+  opacity: 1;
+  background:
+    radial-gradient(circle at 25% 30%, rgba(232, 67, 147, 0.18), transparent 50%),
+    radial-gradient(circle at 75% 70%, rgba(245, 166, 35, 0.18), transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(0, 214, 143, 0.1), transparent 65%);
+  animation: streak-pulse 2.4s ease-in-out infinite, streak-hue 6s linear infinite;
+}
+
+.streak-tier-4 .streak-bg-fx {
+  opacity: 1;
+  background:
+    radial-gradient(circle at 20% 25%, rgba(232, 67, 147, 0.22), transparent 45%),
+    radial-gradient(circle at 80% 30%, rgba(255, 215, 0, 0.2), transparent 45%),
+    radial-gradient(circle at 50% 85%, rgba(0, 229, 255, 0.18), transparent 50%);
+  animation: streak-pulse 1.9s ease-in-out infinite, streak-hue 4.5s linear infinite;
+}
+
+.streak-tier-5 .streak-bg-fx {
+  opacity: 1;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(255, 0, 128, 0.28), transparent 42%),
+    radial-gradient(circle at 85% 25%, rgba(255, 215, 0, 0.25), transparent 42%),
+    radial-gradient(circle at 50% 95%, rgba(0, 229, 255, 0.22), transparent 48%),
+    radial-gradient(circle at 30% 75%, rgba(138, 43, 226, 0.2), transparent 45%);
+  animation: streak-pulse 1.2s ease-in-out infinite, streak-hue 2.8s linear infinite, streak-shake 0.6s ease-in-out infinite;
+}
+
+@keyframes streak-pulse {
+  0%, 100% { transform: scale(1); filter: blur(0); }
+  50% { transform: scale(1.04); filter: blur(1px); }
+}
+@keyframes streak-hue {
+  0%, 100% { filter: hue-rotate(0deg); }
+  50% { filter: hue-rotate(180deg); }
+}
+@keyframes streak-shake {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(-2px, 1px) scale(1.02); }
+  75% { transform: translate(2px, -1px) scale(1.02); }
+}
+
 </style>

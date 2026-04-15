@@ -62,15 +62,15 @@ const RUN_SPEED = 270
 // Per-level overrides (Level 5 = Pong, needs full scene visible).
 // Levels 1-4 and 6 get an aggressive close-up so Lars fills the frame.
 const WORLD_ZOOM_BY_LEVEL: Record<number, number> = {
-  1: 2.4,
-  2: 2.4,
-  3: 2.4,
-  4: 2.4,
-  5: 1.0,   // Pong — needs full width, no zoom
-  6: 2.2,   // Valhalla feast — slightly less to see more NPCs at once
+  1: 4.0,   // Moser — close-up cinematic
+  2: 4.0,   // Skov
+  3: 3.8,   // Klipper — slightly less so you can see jumps ahead
+  4: 3.8,   // Ild — same reason (lava pits are big)
+  5: 1.0,   // Pong — MUST show full scene
+  6: 3.2,   // Valhalla feast — see NPCs at once
 }
 function getWorldZoom(): number {
-  return WORLD_ZOOM_BY_LEVEL[currentLevel.value] ?? 2.4
+  return WORLD_ZOOM_BY_LEVEL[currentLevel.value] ?? 4.0
 }
 
 let px = 60, py = 0, pvx = 0, pvy = 0

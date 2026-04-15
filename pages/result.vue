@@ -87,7 +87,20 @@ onMounted(() => {
 
 async function submitScore() {
   const result = state.value.lastResult
-  if (scoreSaved.value || !state.value.nickname || !result) return
+  if (scoreSaved.value || !result) return
+
+  // Auto-generate nickname if user never set one — guarantees the score hits the leaderboard.
+  // Picks a viking-themed name + 3-digit random suffix so it feels intentional, not "Guest123".
+  if (!state.value.nickname) {
+    const vikings = ['Ragnar', 'Bjorn', 'Ivar', 'Floki', 'Lagertha', 'Rollo', 'Ubbe', 'Hvitserk', 'Sigurd', 'Freydis', 'Gunnar', 'Olaf']
+    const pick = vikings[Math.floor(Math.random() * vikings.length)]
+    const suffix = Math.floor(Math.random() * 900) + 100
+    state.value.nickname = `${pick}${suffix}`
+    if (import.meta.client) {
+      localStorage.setItem('erdetlars_nickname', state.value.nickname)
+    }
+  }
+
   try {
     await $fetch('/api/leaderboard', {
       method: 'POST',
