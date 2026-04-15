@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#0F1923"/>
+  <text x="256" y="180" text-anchor="middle" font-family="'Space Grotesk', Helvetica, Arial, sans-serif" font-weight="700" font-size="86" fill="#F5A623" letter-spacing="2">ER DET</text>
+  <text x="256" y="320" text-anchor="middle" font-family="'Space Grotesk', Helvetica, Arial, sans-serif" font-weight="800" font-size="135" fill="#FFFFFF" letter-spacing="3">LARS</text>
+  <text x="256" y="440" text-anchor="middle" font-family="'Space Grotesk', Helvetica, Arial, sans-serif" font-weight="700" font-size="86" fill="#F5A623">?</text>
+</svg>

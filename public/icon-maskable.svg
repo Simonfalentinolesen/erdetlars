@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Maskable: full-bleed background, indhold inden for 20% safe-zone (102-410) -->
+  <rect width="512" height="512" fill="#0F1923"/>
+  <rect x="102" y="102" width="308" height="308" rx="60" fill="none" stroke="none"/>
+  <text x="256" y="220" text-anchor="middle" font-family="'Space Grotesk', Helvetica, Arial, sans-serif" font-weight="700" font-size="62" fill="#F5A623" letter-spacing="1.5">ER DET</text>
+  <text x="256" y="320" text-anchor="middle" font-family="'Space Grotesk', Helvetica, Arial, sans-serif" font-weight="800" font-size="88" fill="#FFFFFF" letter-spacing="2.5">LARS</text>
+  <text x="256" y="395" text-anchor="middle" font-family="'Space Grotesk', Helvetica, Arial, sans-serif" font-weight="700" font-size="62" fill="#F5A623">?</text>
+</svg>
