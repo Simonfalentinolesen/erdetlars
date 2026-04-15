@@ -18,7 +18,7 @@ const { unlock: unlockCard, unlockedCount, totalCount, mythicalUnlocked } = useC
 const { checkAll, recordCorrectAnswer, resetStreakTimer, recordFooled, recordFactRead, recordPrankSurvived, recordPowerUpUsed } = useAchievements()
 const { inventory, hintActive, recentlyEarned, awardRandom, use: usePowerUp, consumeShield, consumeDouble, startSession } = usePowerUps()
 const { activePrank, prankQuote, maybeTrigger: maybeJimPrank, enabled: pranksEnabled } = useJimPranks()
-const { shouldShowTeaser, shouldShowInterstitial, getAdBreakCopy, markTeaserDismissed, markTeaserClicked } = useMinigamePromo()
+const { getAll: getAllMinigames, markTeaserClicked } = useMinigamePromo()
 
 // Redirect if no game started
 if (state.value.screen !== 'playing') {
@@ -56,10 +56,13 @@ const swipeCardRef = ref<any>(null)
 const localAnswerCount = ref(0)
 const answerFromButton = ref(false)
 
-// Minigame promo state
-const teaserPromo = ref<ReturnType<typeof shouldShowTeaser>>(null)
-const interstitialPromo = ref<ReturnType<typeof shouldShowInterstitial>>(null)
-const interstitialCopy = ref<{ headline: string; sub: string } | null>(null)
+// ==================== MINIGAME BREAKER ====================
+// Full-screen takeover that showcases ALL 3 minigames at specific swipe milestones.
+// Fires ONLY at swipe 4 and swipe 20 (user's explicit spec) — no other teasers,
+// no per-game rotation. One big break covering everything.
+const BREAKER_TRIGGERS: ReadonlyArray<number> = [4, 20]
+const breakerPromos = ref<ReturnType<typeof getAllMinigames> | null>(null)
+const breakerLabel = ref('')
 
 // ==================== KVIT ELLER DOBBELT ====================
 // Every 12th swipe: show the card extreme-zoomed into center, 2x points if right, -150 if wrong.
@@ -85,7 +88,7 @@ const streakTier = computed(() => {
 // When any fullscreen overlay is showing, smaller toasts hide so they don't stack on top.
 const hasFullscreenOverlay = computed(() =>
   showFact.value ||
-  !!interstitialPromo.value ||
+  !!breakerPromos.value ||
   activePrank.value?.type === 'jim-rant'
 )
 
@@ -145,28 +148,13 @@ function fireConfetti(correct: boolean, isDoNWin = false) {
   }
 }
 
-function dismissTeaser() {
-  markTeaserDismissed()
-  teaserPromo.value = null
+function dismissBreaker() {
+  breakerPromos.value = null
 }
-function playTeaser() {
-  if (!teaserPromo.value) return
+function playFromBreaker(path: string) {
   markTeaserClicked()
-  const path = teaserPromo.value.path
-  teaserPromo.value = null
-  // Stop current game so it doesn't linger
-  stopGame()
-  router.push(path)
-}
-
-function dismissInterstitial() {
-  interstitialPromo.value = null
-}
-function playInterstitial() {
-  if (!interstitialPromo.value) return
-  markTeaserClicked()
-  const path = interstitialPromo.value.path
-  interstitialPromo.value = null
+  breakerPromos.value = null
+  // Stop current game so it doesn't linger in the background
   stopGame()
   router.push(path)
 }
@@ -419,19 +407,10 @@ async function processAnswer(guessedLars: boolean) {
     }, prank.duration + 100)
   }
 
-  // Minigame promo — interstitial takes priority over teaser
-  // Don't trigger during a prank (would clash visually)
-  if (!prank && !showFact.value) {
-    const interstitial = shouldShowInterstitial(localAnswerCount.value, state.value.streak)
-    if (interstitial) {
-      interstitialCopy.value = getAdBreakCopy()
-      interstitialPromo.value = interstitial
-    } else {
-      const teaser = shouldShowTeaser(localAnswerCount.value)
-      if (teaser) {
-        teaserPromo.value = teaser
-      }
-    }
+  // Minigame BREAKER — only at swipe 4 and 20. Skip if prank/fact is on screen.
+  if (!prank && !showFact.value && BREAKER_TRIGGERS.includes(localAnswerCount.value)) {
+    breakerPromos.value = getAllMinigames()
+    breakerLabel.value = `EFTER ${localAnswerCount.value} SWIPES`
   }
 
   readyForNext()
@@ -689,20 +668,14 @@ const rightLabel = computed(() => buttonsSwapped.value ? 'Ikke Lars' : 'Det er L
     <!-- Achievement toasts -->
     <AchievementToast />
 
-    <!-- Minigame teaser (light touch, dismissable) — suppressed during fullscreen overlays -->
-    <MinigameTeaser
-      :promo="hasFullscreenOverlay ? null : teaserPromo"
-      @dismiss="dismissTeaser"
-      @play="playTeaser"
-    />
-
-    <!-- Minigame interstitial (bigger ad break) -->
-    <MinigameInterstitial
-      :promo="interstitialPromo"
-      :headline="interstitialCopy?.headline"
-      :sub="interstitialCopy?.sub"
-      @dismiss="dismissInterstitial"
-      @play="playInterstitial"
+    <!-- Minigame BREAKER — full-screen takeover at swipe 4 and 20.
+         Replaces the old small teaser + single-game interstitial.
+         Shows all 3 minigames at once; user picks or skips. -->
+    <MinigameBreaker
+      :promos="breakerPromos"
+      :trigger-label="breakerLabel"
+      @dismiss="dismissBreaker"
+      @play="playFromBreaker"
     />
   </div>
 
