@@ -6,6 +6,7 @@ const router = useRouter()
 const { state, startGame, getScoreComment } = useGame()
 const { getResultQuote } = useJim()
 const { pickById, pickRandom } = useMinigamePromo()
+const { playPerfect, playStreak } = useSound()
 
 const jimResultQuote = ref('')
 
@@ -72,7 +73,7 @@ onMounted(() => {
     submitScore()
   }, 300)
 
-  // Confetti for good scores
+  // Confetti + lyd for gode scores
   if (result.score >= 600) {
     setTimeout(() => {
       confetti({
@@ -81,6 +82,8 @@ onMounted(() => {
         origin: { y: 0.3 },
         colors: ['#F5A623', '#00D68F', '#E84393'],
       })
+      if (result.isPerfect) playPerfect()
+      else playStreak()
     }, 1000)
   }
 })

@@ -12,7 +12,10 @@ const {
   getStreakMessage,
   getMultiplier,
 } = useGame()
-const { playCorrect, playWrong, playStreak } = useSound()
+const { playCorrect, playWrong, playStreak, playTension, enabled: soundEnabled, toggle: toggleSound } = useSound()
+
+// Trigger tension lyd når Kvit-eller-dobbelt kortet er synligt (én gang)
+const donTensionFired = ref(false)
 const { getCorrectQuote, getWrongQuote } = useJim()
 const { unlock: unlockCard, unlockedCount, totalCount, mythicalUnlocked } = useCollection()
 const { checkAll, recordCorrectAnswer, resetStreakTimer, recordFooled, recordFactRead, recordPrankSurvived, recordPowerUpUsed } = useAchievements()
@@ -70,6 +73,16 @@ const breakerLabel = ref('')
 const isDoubleOrNothing = computed(() => {
   // After N answers, the NEXT swipe will be #(N+1). Trigger at 12, 24, 36...
   return (localAnswerCount.value + 1) % 12 === 0 && localAnswerCount.value + 1 > 0
+})
+
+// Fyr tension-lyd når DoN-kortet vises (men kun én gang pr. DoN-runde)
+watch(isDoubleOrNothing, (isDoN) => {
+  if (isDoN && !donTensionFired.value) {
+    donTensionFired.value = true
+    playTension()
+  } else if (!isDoN) {
+    donTensionFired.value = false
+  }
 })
 
 // ==================== EVOLVING DESIGN ====================
@@ -454,6 +467,13 @@ const rightLabel = computed(() => buttonsSwapped.value ? 'Ikke Lars' : 'Det er L
         >
           <Icon name="mdi:home" size="18" />
         </NuxtLink>
+        <button
+          class="w-9 h-9 rounded-full glass flex items-center justify-center text-muted hover:text-white transition-colors"
+          :aria-label="soundEnabled ? 'Slå lyd fra' : 'Slå lyd til'"
+          @click="toggleSound"
+        >
+          <Icon :name="soundEnabled ? 'mdi:volume-high' : 'mdi:volume-off'" size="18" />
+        </button>
         <button
           class="px-3 py-2 rounded-xl glass text-xs font-heading font-semibold text-accent hover:bg-accent/10 transition-colors btn-press"
           @click="handleStopGame"
