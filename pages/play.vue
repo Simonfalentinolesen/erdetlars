@@ -17,7 +17,7 @@ const { getCorrectQuote, getWrongQuote } = useJim()
 const { unlock: unlockCard, unlockedCount, totalCount, mythicalUnlocked } = useCollection()
 const { checkAll, recordCorrectAnswer, resetStreakTimer, recordFooled, recordFactRead, recordPrankSurvived, recordPowerUpUsed } = useAchievements()
 const { inventory, hintActive, recentlyEarned, awardRandom, use: usePowerUp, consumeShield, consumeDouble, startSession } = usePowerUps()
-const { activePrank, prankQuote, maybeTrigger: maybeJimPrank, enabled: pranksEnabled } = useJimPranks()
+const { activePrank, prankQuote, maybeTrigger: maybeJimPrank, enabled: pranksEnabled, dismiss: dismissPrank } = useJimPranks()
 const { getAll: getAllMinigames, markTeaserClicked } = useMinigamePromo()
 
 // Redirect if no game started
@@ -176,9 +176,10 @@ function onKeyDown(e: KeyboardEvent) {
     dismissFact()
     return
   }
-  // Dismiss Jim-rant prank
+  // Dismiss Jim-rant prank — ANY key closes it (user was stuck before)
   if (activePrank.value?.type === 'jim-rant') {
     e.preventDefault()
+    dismissPrank()
     return
   }
   if (isProcessing.value) return
@@ -659,8 +660,8 @@ const rightLabel = computed(() => buttonsSwapped.value ? 'Ikke Lars' : 'Det er L
       </div>
     </Transition>
 
-    <!-- Jim Pranks overlay -->
-    <JimPrankOverlay :prank="activePrank" :quote="prankQuote" />
+    <!-- Jim Pranks overlay — rant er nu klik-dismissable -->
+    <JimPrankOverlay :prank="activePrank" :quote="prankQuote" @dismiss="dismissPrank" />
 
     <!-- Power-up earned toast -->
     <PowerUpEarnedToast :type="recentlyEarned" />

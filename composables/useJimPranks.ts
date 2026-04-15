@@ -28,8 +28,9 @@ const PRANK_DEFS: Record<PrankType, PrankDef> = {
   },
   'jim-rant': {
     type: 'jim-rant',
-    duration: 3000,
-    preQuote: 'LYT!',
+    // Kortere varighed (2s) + klik-dismiss i overlay — intet lyd-element, kun visuel "rant"
+    duration: 2000,
+    preQuote: 'Lars, du tager dig selv alt for seriøst. Slap af.',
     postQuote: 'Tak for din tid, kriger.',
   },
   'upside-down': {

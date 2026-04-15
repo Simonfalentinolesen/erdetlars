@@ -6,8 +6,42 @@ const props = defineProps<{
   quote: string
 }>()
 
+const emit = defineEmits<{
+  (e: 'dismiss'): void
+}>()
+
 const isDalmatian = computed(() => props.prank?.type === 'dalmatian')
 const isRant = computed(() => props.prank?.type === 'jim-rant')
+
+// Rant-countdown — visuel ring, så brugeren ser at det slutter om lidt
+// Synkroniseret med prank.duration i useJimPranks.ts (starter ved 100%, drænes til 0)
+const rantProgress = ref(100)
+let rantInterval: ReturnType<typeof setInterval> | null = null
+
+watch(() => props.prank, (next) => {
+  if (rantInterval) { clearInterval(rantInterval); rantInterval = null }
+  if (next?.type === 'jim-rant') {
+    rantProgress.value = 100
+    const startedAt = Date.now()
+    const duration = next.duration
+    rantInterval = setInterval(() => {
+      const elapsed = Date.now() - startedAt
+      rantProgress.value = Math.max(0, 100 - (elapsed / duration) * 100)
+      if (elapsed >= duration && rantInterval) {
+        clearInterval(rantInterval)
+        rantInterval = null
+      }
+    }, 50)
+  }
+})
+
+onUnmounted(() => {
+  if (rantInterval) clearInterval(rantInterval)
+})
+
+function dismissRant() {
+  emit('dismiss')
+}
 </script>
 
 <template>
@@ -47,13 +81,29 @@ const isRant = computed(() => props.prank?.type === 'jim-rant')
     </div>
   </Transition>
 
-  <!-- Jim rant fullscreen -->
+  <!-- Jim rant fullscreen — tap anywhere OR click X to dismiss -->
   <Transition name="jim-rant">
     <div
       v-if="isRant"
-      class="fixed inset-0 z-[85] flex items-center justify-center bg-black/80 backdrop-blur-sm pointer-events-none"
+      class="fixed inset-0 z-[85] flex items-center justify-center bg-black/85 backdrop-blur-sm cursor-pointer"
+      role="button"
+      tabindex="0"
+      aria-label="Tryk for at lukke Jim's vrede"
+      @click="dismissRant"
+      @keydown.enter="dismissRant"
+      @keydown.space.prevent="dismissRant"
     >
-      <div class="max-w-sm mx-6 text-center">
+      <div class="max-w-sm mx-6 text-center relative">
+        <!-- Close button, top-right -->
+        <button
+          type="button"
+          class="absolute -top-3 -right-3 w-9 h-9 rounded-full bg-error/90 hover:bg-error text-white flex items-center justify-center shadow-lg z-10"
+          aria-label="Luk"
+          @click.stop="dismissRant"
+        >
+          <Icon name="mdi:close" size="18" />
+        </button>
+
         <!-- Big Jim SVG shaking -->
         <div class="w-24 h-24 mx-auto mb-3 jim-shake">
           <svg viewBox="0 0 48 52" class="w-full h-full" fill="none">
@@ -76,8 +126,19 @@ const isRant = computed(() => props.prank?.type === 'jim-rant')
           <p class="font-heading font-bold text-error text-xs uppercase tracking-widest mb-2">
             Jim's vrede
           </p>
-          <p class="text-white font-heading font-bold text-xl leading-tight">
-            {{ quote }}
+          <p class="text-white font-heading font-bold text-lg leading-snug">
+            "{{ quote }}"
+          </p>
+
+          <!-- Countdown bar — visuelt aftegner når overlayet auto-lukker -->
+          <div class="mt-4 h-1 rounded-full bg-white/10 overflow-hidden">
+            <div
+              class="h-full bg-error transition-[width] duration-75 ease-linear"
+              :style="{ width: rantProgress + '%' }"
+            />
+          </div>
+          <p class="text-muted/70 text-[10px] font-mono mt-2 uppercase tracking-widest">
+            Tryk hvor som helst for at lukke
           </p>
         </div>
       </div>
