@@ -45,7 +45,34 @@ export const useCollection = () => {
     unlockedMap.value = { ...unlockedMap.value, [imageId]: Date.now() }
     recentUnlocks.value = [imageId, ...recentUnlocks.value].slice(0, 10)
     save()
+    // DB-backup: debouncet flush af hele snapshot (fire-and-forget).
+    // Hvis fejl sker under spil, forbliver lokal state intakt; næste sync
+    // fanger op igen fordi vi altid sender komplet snapshot.
+    if (import.meta.client) {
+      try { useProgressSync().schedulePush() } catch {}
+    }
     return true
+  }
+
+  /**
+   * Merger server-state ind i lokal state uden at overskrive nyere lokale unlocks.
+   * Bruges ved cross-device restore (brugeren logger ind på ny browser).
+   */
+  function mergeFromServer(serverIds: number[]) {
+    if (!import.meta.client) return
+    let changed = false
+    const now = Date.now()
+    const merged = { ...unlockedMap.value }
+    for (const id of serverIds) {
+      if (!merged[id]) {
+        merged[id] = now
+        changed = true
+      }
+    }
+    if (changed) {
+      unlockedMap.value = merged
+      save()
+    }
   }
 
   function isUnlocked(imageId: number): boolean {
@@ -97,5 +124,6 @@ export const useCollection = () => {
     isUnlocked,
     consumeRecentUnlocks,
     reset,
+    mergeFromServer,
   }
 }

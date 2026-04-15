@@ -70,6 +70,26 @@ export const useAchievements = () => {
     progress.value.unlocked.push(id)
     pendingToasts.value.push(def)
     save()
+    // DB-backup: debouncet sync — fire-and-forget, lokal state er kilde
+    if (import.meta.client) {
+      try { useProgressSync().schedulePush() } catch {}
+    }
+  }
+
+  /**
+   * Merger server-state ind i lokal. Bruges ved cross-device restore.
+   * Overskriver ikke — tilføjer kun dem brugeren ikke havde i forvejen.
+   */
+  function mergeFromServer(serverIds: string[]) {
+    if (!import.meta.client) return
+    let changed = false
+    for (const id of serverIds) {
+      if (!progress.value.unlocked.includes(id) && ALL_ACHIEVEMENTS.some(a => a.id === id)) {
+        progress.value.unlocked.push(id)
+        changed = true
+      }
+    }
+    if (changed) save()
   }
 
   /** Check all unlock conditions against provided context */
@@ -202,6 +222,7 @@ export const useAchievements = () => {
     totalCount,
     isUnlocked,
     unlock,
+    mergeFromServer,
     checkAll,
     recordPrankSurvived,
     recordFactRead,
