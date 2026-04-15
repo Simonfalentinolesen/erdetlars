@@ -34,6 +34,16 @@ const games = [
     borderColor: 'border-pink-accent/30',
     ready: true,
   },
+  {
+    id: 'viking-lars-v2',
+    title: 'Viking Lars V2 (Phaser)',
+    description: 'Eksperiment: samme spil rebuildet på Phaser 3-engine. Lars føles federe.',
+    icon: 'mdi:flask-outline',
+    color: 'text-accent',
+    bgColor: 'bg-accent/10',
+    borderColor: 'border-accent/40',
+    ready: true,
+  },
 ]
 </script>
 
