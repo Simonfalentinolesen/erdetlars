@@ -11,7 +11,9 @@ const {
   getRandomFact,
   getStreakMessage,
   getMultiplier,
+  getDifficultyConfig,
 } = useGame()
+const difficulty = computed(() => getDifficultyConfig())
 const { playCorrect, playWrong, playStreak, playTension, enabled: soundEnabled, toggle: toggleSound } = useSound()
 
 // Trigger tension lyd når Kvit-eller-dobbelt kortet er synligt (én gang)
@@ -58,6 +60,60 @@ const swipeCardRef = ref<any>(null)
 // Track answers for Lars Fact timing
 const localAnswerCount = ref(0)
 const answerFromButton = ref(false)
+
+// ==================== DIFFICULTY TIMER ====================
+// Viking+ har timer pr. swipe. Når den rammer 0 → auto-wrong svar (behandles som "ikke Lars"
+// men answer() ignorerer valget pga. timedOut-flag og giver fuld straf).
+// Pause timer under: processing, fullscreen-overlays (fact/breaker/rant), kvit-eller-dobbelt (for lang at læse).
+const timerRemainingMs = ref(0)
+const timerProgress = computed(() => {
+  const total = difficulty.value.timerPerSwipeMs
+  if (!total) return 0
+  return Math.max(0, Math.min(100, (timerRemainingMs.value / total) * 100))
+})
+const timerCritical = computed(() => {
+  const total = difficulty.value.timerPerSwipeMs
+  if (!total) return false
+  return timerRemainingMs.value / total < 0.3
+})
+
+let timerInterval: ReturnType<typeof setInterval> | null = null
+let timerStartTime = 0
+let timerAutoFired = false
+
+function stopTimer() {
+  if (timerInterval) {
+    clearInterval(timerInterval)
+    timerInterval = null
+  }
+}
+
+function startTimer() {
+  stopTimer()
+  const total = difficulty.value.timerPerSwipeMs
+  if (!total) return
+  timerRemainingMs.value = total
+  timerStartTime = Date.now()
+  timerAutoFired = false
+  timerInterval = setInterval(() => {
+    const elapsed = Date.now() - timerStartTime
+    timerRemainingMs.value = Math.max(0, total - elapsed)
+    if (timerRemainingMs.value <= 0 && !timerAutoFired) {
+      timerAutoFired = true
+      stopTimer()
+      // Fire auto-wrong med swipe-animation så kortet forlader skærmen.
+      // Samme flow som handleButtonAnswer, bare med timedOut=true.
+      if (!isProcessing.value) {
+        isProcessing.value = true
+        answerFromButton.value = true
+        if (swipeCardRef.value?.triggerSwipe) {
+          swipeCardRef.value.triggerSwipe('left')
+        }
+        setTimeout(() => processAnswer(false, true), 280)
+      }
+    }
+  }, 50)
+}
 
 // ==================== MINIGAME BREAKER ====================
 // Full-screen takeover that showcases ALL 3 minigames at specific swipe milestones.
@@ -214,10 +270,13 @@ function onKeyDown(e: KeyboardEvent) {
 
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown)
+  // Start timer for første kort
+  if (canRunTimer.value) startTimer()
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeyDown)
+  stopTimer()
 })
 
 function handleButtonAnswer(guessedLars: boolean) {
@@ -286,14 +345,15 @@ function handleUsePowerUp(type: PowerUpType) {
   }
 }
 
-async function processAnswer(guessedLars: boolean) {
+async function processAnswer(guessedLars: boolean, timedOut = false) {
+  stopTimer()  // Stop sværhedsgrad-timer så den ikke triggrer under fx feedback
   const image = getCurrentImage()
   if (!image) return
 
   // Capture Kvit-eller-dobbelt state BEFORE answer() increments the counter
   const wasDoN = isDoubleOrNothing.value
 
-  const result = answer(guessedLars)
+  const result = answer(guessedLars, { timedOut })
   const wasCorrect = result.correct
 
   // Apply power-up effects
@@ -305,8 +365,11 @@ async function processAnswer(guessedLars: boolean) {
     state.value.score = Math.max(0, state.value.score + (finalPoints - result.points))
   }
 
-  // Determine what Jim says this round — priority: DoN > shield > streak milestone > regular quote
+  // Determine what Jim says this round — priority: DoN > timedOut > shield > streak milestone > regular quote
   let jimSays = wasCorrect ? getCorrectQuote() : getWrongQuote()
+  if (timedOut) {
+    jimSays = '⏱️ For sent, Lars! Timeren løb ud.'
+  }
 
   // Kvit eller dobbelt: doubles winnings, crushes losses
   if (wasDoN) {
@@ -437,7 +500,26 @@ function dismissFact() {
 
 function readyForNext() {
   isProcessing.value = false
+  // Start ny timer for næste kort (hvis sværhedsgrad kræver det + ingen overlays blokerer)
+  if (canRunTimer.value) startTimer()
 }
+
+// Timer må kun køre når brugeren faktisk KAN svare.
+// Blokerende tilstande: processing, fact/prank/breaker overlays, kvit-eller-dobbelt (ekstra tænketid).
+const canRunTimer = computed(() =>
+  !isProcessing.value
+  && !showFact.value
+  && !breakerPromos.value
+  && activePrank.value?.type !== 'jim-rant'
+  && !isDoubleOrNothing.value
+  && !!difficulty.value.timerPerSwipeMs
+)
+
+// Pause/resume timeren automatisk når overlay-tilstand skifter.
+watch(canRunTimer, (can) => {
+  if (can) startTimer()
+  else stopTimer()
+})
 
 function handleStopGame() {
   stopGame()
@@ -489,13 +571,41 @@ const rightLabel = computed(() => buttonsSwapped.value ? 'Ikke Lars' : 'Det er L
       />
     </div>
 
-    <!-- Swiped counter + collection progress -->
+    <!-- Swiped counter + difficulty badge + collection progress -->
     <div class="text-center py-1 flex items-center justify-center gap-3">
       <span class="text-muted text-xs font-mono">{{ state.totalSwiped }} swiped</span>
+      <!-- Difficulty badge: viser hvilken sværhedsgrad der er valgt -->
+      <span
+        class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-heading font-bold tracking-widest uppercase"
+        :style="{ color: difficulty.color, backgroundColor: `${difficulty.color}20`, borderColor: `${difficulty.color}60`, borderWidth: '1px', borderStyle: 'solid' }"
+      >
+        <Icon :name="difficulty.icon" size="10" />
+        {{ difficulty.label }}
+      </span>
       <NuxtLink to="/samling" class="text-muted text-xs font-mono hover:text-accent transition-colors flex items-center gap-1">
         <Icon name="mdi:cards" size="12" />
         {{ unlockedCount }}/{{ totalCount }}
       </NuxtLink>
+    </div>
+
+    <!-- Timer-bar: kun synlig på Viking+. Rød-gradient når under 30%. -->
+    <div
+      v-if="difficulty.timerPerSwipeMs"
+      class="mx-6 h-1 rounded-full bg-white/10 overflow-hidden mb-1"
+      role="progressbar"
+      :aria-valuenow="Math.round(timerProgress)"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-label="Tid tilbage"
+    >
+      <div
+        class="h-full transition-[width] duration-75 ease-linear"
+        :class="[timerCritical ? 'timer-critical' : '']"
+        :style="{
+          width: `${timerProgress}%`,
+          backgroundColor: timerCritical ? '#E84393' : difficulty.color,
+        }"
+      />
     </div>
 
     <!-- Card area -->
@@ -605,9 +715,15 @@ const rightLabel = computed(() => buttonsSwapped.value ? 'Ikke Lars' : 'Det er L
       </Transition>
     </div>
 
-    <!-- Power-up bar -->
-    <div class="pt-1 pb-2">
+    <!-- Power-up bar — skjules på Legendarisk (powerUpsEnabled: false) -->
+    <div v-if="difficulty.powerUpsEnabled" class="pt-1 pb-2">
       <PowerUpBar :disabled="isProcessing" @use="handleUsePowerUp" />
+    </div>
+    <div v-else class="pt-1 pb-2 text-center">
+      <p class="text-muted/60 text-[10px] font-heading font-bold tracking-widest uppercase flex items-center justify-center gap-1.5">
+        <Icon name="mdi:shield-off" size="12" :style="{ color: difficulty.color }" />
+        Ingen power-ups · {{ difficulty.label.toLocaleLowerCase() }}
+      </p>
     </div>
 
     <!-- Action buttons (with swap indicator) -->
@@ -909,6 +1025,16 @@ const rightLabel = computed(() => buttonsSwapped.value ? 'Ikke Lars' : 'Det er L
   0%, 100% { transform: translate(0, 0) scale(1); }
   25% { transform: translate(-2px, 1px) scale(1.02); }
   75% { transform: translate(2px, -1px) scale(1.02); }
+}
+
+/* Timer-critical: pulsating rød bar når der er <30% tid tilbage */
+.timer-critical {
+  animation: timer-panic 0.55s ease-in-out infinite;
+  box-shadow: 0 0 12px rgba(232, 67, 147, 0.75);
+}
+@keyframes timer-panic {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
 }
 
 </style>

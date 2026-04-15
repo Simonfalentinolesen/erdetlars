@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import confetti from 'canvas-confetti'
 import type { MinigameId } from '~/composables/useMinigamePromo'
+import { DIFFICULTY_CONFIG } from '~/composables/useGame'
 
 const router = useRouter()
 const { state, startGame, getScoreComment } = useGame()
 const { getResultQuote } = useJim()
 const { pickById, pickRandom } = useMinigamePromo()
 const { playPerfect, playStreak } = useSound()
+
+const resultDifficulty = computed(() => {
+  const id = state.value.lastResult?.difficulty ?? state.value.difficulty
+  return DIFFICULTY_CONFIG[id] ?? DIFFICULTY_CONFIG.rookie
+})
 
 const jimResultQuote = ref('')
 
@@ -185,6 +191,16 @@ async function shareResult() {
       <p class="font-mono font-bold text-7xl sm:text-8xl text-white tabular-nums">
         {{ displayScore.toLocaleString() }}
       </p>
+      <!-- Difficulty-badge: viser hvilken sværhedsgrad runden blev spillet på -->
+      <div class="flex items-center justify-center mt-3">
+        <span
+          class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-heading font-bold tracking-widest uppercase"
+          :style="{ color: resultDifficulty.color, backgroundColor: `${resultDifficulty.color}20`, borderColor: `${resultDifficulty.color}60`, borderWidth: '1px', borderStyle: 'solid' }"
+        >
+          <Icon :name="resultDifficulty.icon" size="12" />
+          {{ resultDifficulty.label }}
+        </span>
+      </div>
       <p class="font-body text-accent text-lg mt-3 italic">
         "{{ scoreComment }}"
       </p>

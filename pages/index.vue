@@ -1,5 +1,7 @@
 <script setup lang="ts">
-const { state, setNickname, startGame } = useGame()
+import { DIFFICULTY_CONFIG, type DifficultyId } from '~/composables/useGame'
+
+const { state, setNickname, setDifficulty, startGame } = useGame()
 const { getIdleQuote, shouldJimAppear } = useJim()
 const { unlockedCount, totalCount, completionPct } = useCollection()
 const { unlockedCount: achUnlocked, totalCount: achTotal } = useAchievements()
@@ -8,6 +10,10 @@ const router = useRouter()
 const nicknameInput = ref(state.value.nickname || '')
 const showNicknameInput = ref(!state.value.nickname)
 const isAnimating = ref(false)
+
+// Difficulty-selector — ordered list til segmented control
+const difficultyList = (Object.keys(DIFFICULTY_CONFIG) as DifficultyId[]).map(id => DIFFICULTY_CONFIG[id])
+const currentDifficulty = computed(() => DIFFICULTY_CONFIG[state.value.difficulty])
 
 // Jim random appearance
 const showJim = ref(false)
@@ -107,6 +113,36 @@ function handleNicknameSubmit() {
           Spiller som <button class="text-accent font-semibold hover:underline" @click="showNicknameInput = true">{{ state.nickname }}</button>
         </p>
       </div>
+    </div>
+
+    <!-- Difficulty selector — ændrer timer, point og straf. Gemmes i localStorage. -->
+    <div
+      class="w-full max-w-xs mb-3 transition-all duration-700 delay-400 relative z-10"
+      :class="isAnimating ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'"
+    >
+      <p class="text-muted text-[10px] font-heading font-bold tracking-widest uppercase text-center mb-2">Sværhedsgrad</p>
+      <div class="grid grid-cols-4 gap-1.5">
+        <button
+          v-for="diff in difficultyList"
+          :key="diff.id"
+          class="relative py-2 rounded-xl glass text-center transition-all btn-press border"
+          :class="[
+            state.difficulty === diff.id
+              ? 'border-white/40 shadow-glow'
+              : 'border-white/5 hover:border-white/20 opacity-70 hover:opacity-100',
+          ]"
+          :style="state.difficulty === diff.id ? { borderColor: diff.color, boxShadow: `0 0 16px ${diff.color}55` } : {}"
+          :aria-pressed="state.difficulty === diff.id"
+          :aria-label="`Sværhedsgrad ${diff.label}: ${diff.description}`"
+          @click="setDifficulty(diff.id)"
+        >
+          <Icon :name="diff.icon" size="18" :style="{ color: diff.color }" />
+          <p class="text-[9px] font-heading font-bold mt-0.5" :style="{ color: diff.color }">{{ diff.label.toUpperCase() }}</p>
+        </button>
+      </div>
+      <p class="text-muted text-[11px] font-body text-center mt-2 h-4">
+        {{ currentDifficulty.description }}
+      </p>
     </div>
 
     <!-- Play buttons -->

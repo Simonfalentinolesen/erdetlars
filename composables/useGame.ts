@@ -17,7 +17,90 @@ export interface GameResult {
   bestStreak: number
   durationMs: number
   totalSwiped: number
+  difficulty: DifficultyId
   answers: { imageId: number; guessedLars: boolean; correct: boolean; timeMs: number }[]
+}
+
+export type DifficultyId = 'rookie' | 'viking' | 'impossible' | 'legendary'
+
+export interface DifficultyConfig {
+  id: DifficultyId
+  label: string
+  description: string
+  icon: string
+  color: string
+  // Gameplay modifiers
+  timerPerSwipeMs: number | null  // null = no timer
+  pointsCorrect: number           // base points for correct answer
+  pointsWrong: number             // penalty for wrong answer (negative)
+  speedBonusMs: number            // answer faster than this → bonus
+  speedBonusPts: number           // speed bonus amount
+  scoreMultiplier: number         // applied on top of streak-multiplier
+  powerUpsEnabled: boolean        // Legendary disables power-ups
+}
+
+/**
+ * Sværhedsgrader tuner gameplay uden at filtrere billeder (alle 47 er "rookie"-tagget).
+ * Hver sværhedsgrad kombinerer timer-pres + pointregulering + straf → giver reel difference.
+ * `scoreMultiplier` ligger OVEN PÅ streak-multiplier så hardcore-spillere bliver belønnet.
+ */
+export const DIFFICULTY_CONFIG: Record<DifficultyId, DifficultyConfig> = {
+  rookie: {
+    id: 'rookie',
+    label: 'Rookie',
+    description: 'Ingen timer · lær spillet',
+    icon: 'mdi:account-outline',
+    color: '#00D68F',
+    timerPerSwipeMs: null,
+    pointsCorrect: 100,
+    pointsWrong: -50,
+    speedBonusMs: 2000,
+    speedBonusPts: 50,
+    scoreMultiplier: 1.0,
+    powerUpsEnabled: true,
+  },
+  viking: {
+    id: 'viking',
+    label: 'Viking',
+    description: '8 sek · +25% point',
+    icon: 'mdi:shield-sword',
+    color: '#F5A623',
+    timerPerSwipeMs: 8000,
+    pointsCorrect: 100,
+    pointsWrong: -75,
+    speedBonusMs: 1500,
+    speedBonusPts: 75,
+    scoreMultiplier: 1.25,
+    powerUpsEnabled: true,
+  },
+  impossible: {
+    id: 'impossible',
+    label: 'Umulig',
+    description: '5 sek · dobbelt straf · 1.5×',
+    icon: 'mdi:skull',
+    color: '#E84393',
+    timerPerSwipeMs: 5000,
+    pointsCorrect: 100,
+    pointsWrong: -150,
+    speedBonusMs: 1000,
+    speedBonusPts: 100,
+    scoreMultiplier: 1.5,
+    powerUpsEnabled: true,
+  },
+  legendary: {
+    id: 'legendary',
+    label: 'Legendarisk',
+    description: '3 sek · ingen power-ups · 2×',
+    icon: 'mdi:crown',
+    color: '#DAA520',
+    timerPerSwipeMs: 3000,
+    pointsCorrect: 100,
+    pointsWrong: -200,
+    speedBonusMs: 800,
+    speedBonusPts: 200,
+    scoreMultiplier: 2.0,
+    powerUpsEnabled: false,
+  },
 }
 
 export interface GameState {
@@ -37,7 +120,7 @@ export interface GameState {
   startTime: number
   lastAnswerTime: number
   nickname: string
-  difficulty: 'rookie' | 'viking' | 'impossible' | 'legendary'
+  difficulty: DifficultyId
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -72,6 +155,10 @@ export const useGame = () => {
   if (import.meta.client) {
     const saved = localStorage.getItem('erdetlars_nickname')
     if (saved) state.value.nickname = saved
+    const savedDiff = localStorage.getItem('erdetlars_difficulty')
+    if (savedDiff && savedDiff in DIFFICULTY_CONFIG) {
+      state.value.difficulty = savedDiff as DifficultyId
+    }
   }
 
   function setNickname(name: string) {
@@ -79,6 +166,17 @@ export const useGame = () => {
     if (import.meta.client) {
       localStorage.setItem('erdetlars_nickname', state.value.nickname)
     }
+  }
+
+  function setDifficulty(id: DifficultyId) {
+    state.value.difficulty = id
+    if (import.meta.client) {
+      localStorage.setItem('erdetlars_difficulty', id)
+    }
+  }
+
+  function getDifficultyConfig(): DifficultyConfig {
+    return DIFFICULTY_CONFIG[state.value.difficulty]
   }
 
   function buildQueue(): GameImage[] {
@@ -106,22 +204,25 @@ export const useGame = () => {
     return 1.0
   }
 
-  function answer(guessedLars: boolean): { correct: boolean; points: number; multiplier: number; speedBonus: boolean; message: string } {
+  function answer(guessedLars: boolean, opts: { timedOut?: boolean } = {}): { correct: boolean; points: number; multiplier: number; speedBonus: boolean; message: string; timedOut: boolean } {
     const image = getCurrentImage()
     if (!image) {
-      return { correct: false, points: 0, multiplier: 1, speedBonus: false, message: '' }
+      return { correct: false, points: 0, multiplier: 1, speedBonus: false, message: '', timedOut: false }
     }
 
+    const diff = getDifficultyConfig()
     const now = Date.now()
     const answerTime = now - state.value.lastAnswerTime
     state.value.lastAnswerTime = now
 
-    const correct = image.isLars === guessedLars
+    // Timer-udløb (kun muligt på Viking+) behandles altid som forkert svar.
+    const timedOut = opts.timedOut === true
+    const correct = !timedOut && image.isLars === guessedLars
 
-    // Calculate points
-    let points = correct ? 100 : -50
-    const speedBonus = correct && answerTime < 2000
-    if (speedBonus) points += 50
+    // Point beregnes fra difficulty-config frem for hårdkodede tal.
+    let points = correct ? diff.pointsCorrect : diff.pointsWrong
+    const speedBonus = correct && answerTime < diff.speedBonusMs
+    if (speedBonus) points += diff.speedBonusPts
 
     // Update streak
     if (correct) {
@@ -135,8 +236,10 @@ export const useGame = () => {
       state.value.totalWrong++
     }
 
-    const multiplier = getMultiplier()
-    const finalPoints = Math.round(points * multiplier)
+    // Final multiplier = streak × difficulty (difficulty giver ekstra gulrod for hardcore-spillere).
+    const streakMult = getMultiplier()
+    const totalMult = streakMult * diff.scoreMultiplier
+    const finalPoints = Math.round(points * totalMult)
     state.value.score = Math.max(0, state.value.score + finalPoints)
     state.value.totalSwiped++
 
@@ -159,7 +262,7 @@ export const useGame = () => {
     const msgPool = correct ? messagesData.correct : messagesData.wrong
     const message = msgPool[Math.floor(Math.random() * msgPool.length)]
 
-    return { correct, points: finalPoints, multiplier, speedBonus, message }
+    return { correct, points: finalPoints, multiplier: totalMult, speedBonus, message, timedOut }
   }
 
   function stopGame() {
@@ -173,6 +276,7 @@ export const useGame = () => {
       bestStreak: state.value.bestStreak,
       durationMs: totalMs,
       totalSwiped: state.value.totalSwiped,
+      difficulty: state.value.difficulty,
       answers: [...state.value.answers],
     }
 
@@ -212,6 +316,8 @@ export const useGame = () => {
   return {
     state,
     setNickname,
+    setDifficulty,
+    getDifficultyConfig,
     startGame,
     answer,
     stopGame,
