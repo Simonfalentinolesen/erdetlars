@@ -38,6 +38,11 @@ onMounted(async () => {
     void Phaser // referer for at undgå tree-shake
     const config = buildGameConfig(containerEl.value)
     gameInstance = new Phaser.Game(config)
+    // Debug hook for Claude Preview verification (kun i dev)
+    if (import.meta.dev) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__V2_GAME__ = gameInstance
+    }
     isReady.value = true
   } catch (err) {
     console.error('[viking-lars-v2] Phaser failed to start:', err)

@@ -34,14 +34,16 @@ export const COIN_POINTS = 50
 export const DEPTH = {
   BG_FAR: 0,
   BG_MID: 1,
-  BG_NEAR: 2,
+  PARTICLES_BG: 3,
+  BG_NEAR: 5,
   WORLD: 10,
   PICKUPS: 15,
   ENEMIES: 20,
   PLAYER: 25,
   PARTICLES: 28,
+  BOSS_FX: 29,
+  DIALOG: 50,
   HUD: 100,
-  DIALOG: 200,
 } as const
 
 // Scene-keys (centraliseret så vi undgår string-typos)
@@ -57,13 +59,52 @@ export const SCENE = {
 
 // Asset-keys (centraliseret)
 export const ASSET = {
+  // Baggrunde (faktiske billedfiler)
   BG_FAR_L1: 'bg-far-l1',
   BG_MID_L1: 'bg-mid-l1',
   BG_NEAR_L1: 'bg-near-l1',
-  // Procedurelt genererede textures (oprettes i PreloadScene)
-  TEX_LARS: 'tex-lars',
+
+  // Lars varianter (procedural)
+  TEX_LARS: 'tex-lars', // baseline / normal (bruges af sprite create())
+  TEX_LARS_WALK_A: 'tex-lars-walk-a',
+  TEX_LARS_WALK_B: 'tex-lars-walk-b',
+  TEX_LARS_JUMP: 'tex-lars-jump',
+  TEX_LARS_HAPPY: 'tex-lars-happy',
+  TEX_LARS_SCARED: 'tex-lars-scared',
+  TEX_LARS_VICTORY: 'tex-lars-victory',
+
+  // Verden (procedural)
   TEX_GROUND: 'tex-ground',
   TEX_PLATFORM: 'tex-platform',
-  TEX_BEER: 'tex-beer',
+
+  // Fjender (procedural)
   TEX_MOSE_DRAUGER: 'tex-mose-drauger',
+  TEX_MOSE_DRAUGER_B: 'tex-mose-drauger-b',
+  TEX_FENRIS_HVALP: 'tex-fenris-hvalp',
+  TEX_HUGINN_KRAGE: 'tex-huginn-krage',
+
+  // Boss Surtr + projektiler
+  TEX_SURTR: 'tex-surtr',
+  TEX_SURTR_ROCK: 'tex-surtr-rock',
+
+  // Items (procedural)
+  TEX_BEER: 'tex-beer',
+  TEX_SCROLL: 'tex-scroll',
+  TEX_JIM_CROW: 'tex-jim-crow',
+
+  // Partikler (procedural små dots/shapes)
+  TEX_P_MIST: 'tex-p-mist',
+  TEX_P_LEAF: 'tex-p-leaf',
+  TEX_P_RAIN: 'tex-p-rain',
+  TEX_P_EMBER: 'tex-p-ember',
+  TEX_P_FIREFLY: 'tex-p-firefly',
+  TEX_P_STAR: 'tex-p-star',
+  TEX_P_DOT: 'tex-p-dot',
+  TEX_P_GOLD: 'tex-p-gold',
+} as const
+
+// Animation-keys (centraliseret)
+export const ANIM = {
+  LARS_WALK: 'anim-lars-walk',
+  DRAUGER_WALK: 'anim-drauger-walk',
 } as const

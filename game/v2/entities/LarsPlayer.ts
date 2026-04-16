@@ -1,22 +1,25 @@
 import Phaser from 'phaser'
 import {
+  ANIM,
   ASSET,
   DEPTH,
   LARS_DOUBLE_JUMP_VELOCITY,
   LARS_JUMP_VELOCITY,
   LARS_SPEED,
 } from '../constants'
+import { Sound } from '../audio/Sound'
 
 type Mood = 'normal' | 'happy' | 'scared' | 'victory'
 
 /**
  * LarsPlayer: Arcade-physics sprite med:
- * - Venstre/højre bevægelse
- * - Single + double jump (Lars er liddt overspist, men kan stadig)
- * - Mood-state der påvirker tint (gylden = happy, blå = scared)
+ * - Venstre/højre bevægelse med walk-animation (2-frame)
+ * - Single + double jump (Lars er lidt overspist, men kan stadig)
+ * - Mood-state der **skifter tekstur** (ikke bare tint) for synlig mimik
  * - Invuln-flicker efter hit
  *
- * Holdes som klasse separat fra Phaser.Sprite for at gøre testing/state nemmere.
+ * Vigtig: Animation og mood er gensidigt udelukkende. Mood overrider walk indtil
+ * moodTimer er ude.
  */
 export class LarsPlayer {
   public sprite: Phaser.Physics.Arcade.Sprite
@@ -30,8 +33,22 @@ export class LarsPlayer {
   private invulnUntil = 0
   private mood: Mood = 'normal'
   private moodTimer = 0
+  private lastGround = true
 
   constructor(public scene: Phaser.Scene, x: number, y: number) {
+    // Registrer walk-anim (kun én gang — idempotent)
+    if (!scene.anims.exists(ANIM.LARS_WALK)) {
+      scene.anims.create({
+        key: ANIM.LARS_WALK,
+        frames: [
+          { key: ASSET.TEX_LARS_WALK_A },
+          { key: ASSET.TEX_LARS_WALK_B },
+        ],
+        frameRate: 9,
+        repeat: -1,
+      })
+    }
+
     const sprite = scene.physics.add.sprite(x, y, ASSET.TEX_LARS)
     sprite.setDepth(DEPTH.PLAYER)
     sprite.setCollideWorldBounds(true)
@@ -73,19 +90,34 @@ export class LarsPlayer {
       this.sprite.setFlipX(false)
     }
 
+    const onGround = body.blocked.down || body.touching.down
+
     // Reset jump count når vi rammer ground
-    if (body.blocked.down || body.touching.down) {
+    if (onGround) {
       this.jumpsUsed = 0
+      if (!this.lastGround) {
+        // Landet efter fald — lille squash
+        this.scene.tweens.add({
+          targets: this.sprite,
+          scaleY: 0.9,
+          scaleX: 1.1,
+          duration: 60,
+          yoyo: true,
+        })
+      }
     }
+    this.lastGround = onGround
 
     // Jump (med double jump)
     if (jumpPressed) {
-      if (this.jumpsUsed === 0 && (body.blocked.down || body.touching.down)) {
+      if (this.jumpsUsed === 0 && onGround) {
         this.sprite.setVelocityY(LARS_JUMP_VELOCITY)
         this.jumpsUsed = 1
+        Sound.sfx('jump')
       } else if (this.jumpsUsed === 1) {
         this.sprite.setVelocityY(LARS_DOUBLE_JUMP_VELOCITY)
         this.jumpsUsed = 2
+        Sound.sfx('double-jump')
         // Lille squash for at vise double-jump
         this.scene.tweens.add({
           targets: this.sprite,
@@ -109,30 +141,51 @@ export class LarsPlayer {
       this.moodTimer -= dt
       if (this.moodTimer <= 0) {
         this.mood = 'normal'
-        this.applyMoodTint()
+        this.refreshTexture()
       }
+    }
+
+    // Vælg tekstur/animation ud fra state
+    // Prioritet: mood > jump/fall > walk > idle
+    if (this.moodTimer > 0) {
+      // mood har allerede sat tekstur
+    } else if (!onGround) {
+      this.sprite.anims.stop()
+      this.sprite.setTexture(ASSET.TEX_LARS_JUMP)
+    } else if ((left || right) && Math.abs(body.velocity.x) > 20) {
+      // Walk-animation
+      if (!this.sprite.anims.isPlaying || this.sprite.anims.currentAnim?.key !== ANIM.LARS_WALK) {
+        this.sprite.anims.play(ANIM.LARS_WALK, true)
+      }
+    } else {
+      this.sprite.anims.stop()
+      this.sprite.setTexture(ASSET.TEX_LARS)
     }
   }
 
   setMood(mood: Mood, durationMs: number) {
     this.mood = mood
     this.moodTimer = durationMs
-    this.applyMoodTint()
+    this.refreshTexture()
   }
 
-  private applyMoodTint() {
+  /**
+   * Opdaterer tekstur ud fra mood. Stopper animation først så den ikke overskrives.
+   */
+  private refreshTexture() {
+    this.sprite.anims.stop()
     switch (this.mood) {
       case 'happy':
-        this.sprite.setTint(0xffd966)
+        this.sprite.setTexture(ASSET.TEX_LARS_HAPPY)
         break
       case 'scared':
-        this.sprite.setTint(0x6688ff)
+        this.sprite.setTexture(ASSET.TEX_LARS_SCARED)
         break
       case 'victory':
-        this.sprite.setTint(0xf5a623)
+        this.sprite.setTexture(ASSET.TEX_LARS_VICTORY)
         break
       default:
-        this.sprite.clearTint()
+        this.sprite.setTexture(ASSET.TEX_LARS)
     }
   }
 
@@ -143,6 +196,7 @@ export class LarsPlayer {
     if (time < this.invulnUntil) return false
     this.lives = Math.max(0, this.lives - 1)
     this.invulnUntil = time + 1500
+    Sound.sfx('hit')
     // Knockback
     this.sprite.setVelocityY(-300)
     this.sprite.setVelocityX(this.sprite.flipX ? 300 : -300)
