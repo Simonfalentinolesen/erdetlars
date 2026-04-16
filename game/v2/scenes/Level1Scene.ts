@@ -252,11 +252,19 @@ export class Level1Scene extends Phaser.Scene {
   // ---------- Setup ----------
 
   private makeGround() {
+    // Brug staticGroup.create() i stedet for add(image) — sikrer at body
+    // bliver oprettet OG har korrekt bounds. Vigtigt: vi tegner et solidt,
+    // usynligt collision-rect under tile-billederne så Lars ikke kan falde gennem.
     for (let x = 0; x < LEVEL_WIDTH; x += 64) {
-      const tile = this.add.image(x, GROUND_Y + 20, ASSET.TEX_GROUND).setOrigin(0, 0.5)
-      this.platforms.add(tile)
+      // Visuelt: dekorativt mose-tile
+      this.add.image(x, GROUND_Y + 20, ASSET.TEX_GROUND).setOrigin(0, 0.5).setDepth(DEPTH.WORLD)
     }
-    this.platforms.refresh()
+    // Én lang collider-strimmel for hele jord-laget (mere stabil end mange små bodies)
+    const ground = this.platforms.create(LEVEL_WIDTH / 2, GROUND_Y + 30, undefined as unknown as string) as Phaser.Physics.Arcade.Sprite
+    ground.setVisible(false)
+    ground.setDisplaySize(LEVEL_WIDTH, 60)
+    ground.body!.setSize(LEVEL_WIDTH, 60)
+    ground.refreshBody()
   }
 
   private makePlatforms() {
@@ -274,11 +282,16 @@ export class Level1Scene extends Phaser.Scene {
       { x: 4350, y: GROUND_Y - 180 },
     ]
     for (const d of defs) {
-      const plat = this.add.image(d.x, d.y, ASSET.TEX_PLATFORM).setOrigin(0.5, 0.5)
-      if (d.w) plat.setDisplaySize(d.w, 24)
-      this.platforms.add(plat)
+      const w = d.w ?? 120
+      // Visuelt billede
+      this.add.image(d.x, d.y, ASSET.TEX_PLATFORM).setOrigin(0.5, 0.5).setDisplaySize(w, 24).setDepth(DEPTH.WORLD)
+      // Usynligt collider-rektangel via staticGroup.create
+      const body = this.platforms.create(d.x, d.y, undefined as unknown as string) as Phaser.Physics.Arcade.Sprite
+      body.setVisible(false)
+      body.setDisplaySize(w, 24)
+      body.body!.setSize(w, 24)
+      body.refreshBody()
     }
-    this.platforms.refresh()
   }
 
   private makeBossArena() {

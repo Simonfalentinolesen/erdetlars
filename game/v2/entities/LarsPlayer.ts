@@ -55,8 +55,9 @@ export class LarsPlayer {
     sprite.setBounce(0)
     sprite.setDragX(900)
     sprite.setMaxVelocity(LARS_SPEED * 1.2, 1500)
-    // Body lidt smallere end texture for blødere hit-detection
-    sprite.body!.setSize(28, 50, true)
+    // Tekstur er 84×112 (2× opløsning for crisp visning).
+    // Body smallere end texture for blødere hit-detection.
+    sprite.body!.setSize(56, 100, true)
     this.sprite = sprite
 
     const kb = scene.input.keyboard
