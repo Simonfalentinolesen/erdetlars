@@ -9,7 +9,17 @@ const emit = defineEmits<{
   use: [type: PowerUpType]
 }>()
 
-const { inventory, recentlyEarned, activeEffects } = usePowerUps()
+const { inventory, recentlyEarned, activeEffects, hintActive } = usePowerUps()
+
+// Hvilken power-up er "lige nu aktiv" \u2014 bruges til at skjule tooltip
+// n\u00e5r en effekt k\u00f8rer (ellers overlapper tooltip med den ai-genererede
+// Jim-toast, og brugeren ser 2 beskeder samtidig).
+function isActiveType(type: PowerUpType): boolean {
+  if (type === 'hint') return hintActive.value
+  if (type === 'shield') return activeEffects.value.shield
+  if (type === 'double') return activeEffects.value.double
+  return false
+}
 
 const TYPES: PowerUpType[] = ['hint', 'shield', 'double', 'skip']
 
@@ -61,8 +71,10 @@ function handleClick(type: PowerUpType) {
         </span>
       </div>
 
-      <!-- Tooltip on hover (desktop) -->
+      <!-- Tooltip on hover (desktop) \u2014 skjules n\u00e5r denne power-up er aktiv
+           for at undg\u00e5 dobbelt Jim-besked -->
       <div
+        v-if="!isActiveType(type)"
         class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10"
       >
         <div class="glass rounded-lg px-2.5 py-1.5 whitespace-nowrap border border-white/10">

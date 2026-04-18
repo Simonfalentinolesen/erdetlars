@@ -46,6 +46,21 @@
     { "id": 42, "file": "/images/not-lars/IMG_2017.PNG", "isLars": false, "difficulty": "rookie" },
     { "id": 43, "file": "/images/not-lars/IMG_2018.JPG", "isLars": false, "difficulty": "rookie" },
     { "id": 44, "file": "/images/not-lars/Skærmbillede 2026-04-12 kl. 16.58.07.png", "isLars": false, "difficulty": "rookie" },
-    { "id": 45, "file": "/images/not-lars/Skærmbillede 2026-04-12 kl. 16.59.17.png", "isLars": false, "difficulty": "rookie" }
+    { "id": 45, "file": "/images/not-lars/Skærmbillede 2026-04-12 kl. 16.59.17.png", "isLars": false, "difficulty": "rookie" },
+    { "id": 48, "file": "/images/lars/IMG_0584.JPG", "isLars": true, "difficulty": "rookie" },
+    { "id": 49, "file": "/images/lars/IMG_1195.JPG", "isLars": true, "difficulty": "rookie" },
+    { "id": 50, "file": "/images/lars/IMG_1292.JPG", "isLars": true, "difficulty": "rookie" },
+    { "id": 51, "file": "/images/lars/IMG_3030.JPG", "isLars": true, "difficulty": "rookie" },
+    { "id": 52, "file": "/images/lars/IMG_4083.jpeg", "isLars": true, "difficulty": "rookie" },
+    { "id": 53, "file": "/images/lars/_MG_1370.jpg", "isLars": true, "difficulty": "rookie" },
+    { "id": 54, "file": "/images/not-lars/08.07.31 simons feriebilleder 230.jpg", "isLars": false, "difficulty": "rookie" },
+    { "id": 55, "file": "/images/not-lars/102-0286_IMG.JPG", "isLars": false, "difficulty": "rookie" },
+    { "id": 56, "file": "/images/not-lars/Billede 086.jpg", "isLars": false, "difficulty": "rookie" },
+    { "id": 57, "file": "/images/not-lars/IMG_0351.JPG", "isLars": false, "difficulty": "rookie" },
+    { "id": 58, "file": "/images/not-lars/IMG_0694.JPG", "isLars": false, "difficulty": "rookie" },
+    { "id": 59, "file": "/images/not-lars/IMG_2248.JPG", "isLars": false, "difficulty": "rookie" },
+    { "id": 60, "file": "/images/not-lars/IMG_9065.JPG", "isLars": false, "difficulty": "rookie" },
+    { "id": 61, "file": "/images/not-lars/Julefrokost 2010 9728.jpg", "isLars": false, "difficulty": "rookie" },
+    { "id": 62, "file": "/images/not-lars/Skærmbillede 2026-04-18 kl. 20.05.38.jpg", "isLars": false, "difficulty": "rookie" }
   ]
 }

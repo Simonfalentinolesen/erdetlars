@@ -19,7 +19,7 @@ const emit = defineEmits<{
       v-if="show"
       :class="[
         mode === 'popup' && 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm',
-        mode === 'toast' && 'fixed bottom-6 left-4 right-4 z-50 flex justify-center pointer-events-none',
+        mode === 'toast' && 'fixed bottom-52 md:bottom-56 left-4 right-4 z-50 flex justify-center pointer-events-none',
         mode === 'inline' && 'w-full',
       ]"
       @click="mode === 'popup' ? emit('dismiss') : undefined"

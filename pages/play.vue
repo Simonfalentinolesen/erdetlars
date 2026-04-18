@@ -22,7 +22,7 @@ const { getCorrectQuote, getWrongQuote } = useJim()
 const { unlock: unlockCard, unlockedCount, totalCount, mythicalUnlocked } = useCollection()
 const { checkAll, recordCorrectAnswer, resetStreakTimer, recordFooled, recordFactRead, recordPrankSurvived, recordPowerUpUsed } = useAchievements()
 const { inventory, hintActive, recentlyEarned, awardRandom, use: usePowerUp, consumeShield, consumeDouble, startSession } = usePowerUps()
-const { activePrank, prankQuote, maybeTrigger: maybeJimPrank, enabled: pranksEnabled, dismiss: dismissPrank } = useJimPranks()
+const { activePrank, prankQuote, maybeTrigger: maybeJimPrank, enabled: pranksEnabled, dismiss: dismissPrank, endCardPranks } = useJimPranks()
 const { getAll: getAllMinigames, markTeaserClicked } = useMinigamePromo()
 
 // Redirect if no game started
@@ -46,8 +46,8 @@ const feedbackSpeedBonus = ref(false)
 // Unlocked card toast
 const unlockedCardToast = ref<{ rarity: string; id: number } | null>(null)
 
-// Lars Fact state
-const showFact = ref(false)
+// Lars Fact state — vises nu som Jim-toast (se showJimToast/jimToastQuote nedenfor),
+// ikke længere som blokerende fullscreen popup.
 const factText = ref('')
 
 // Jim state
@@ -124,19 +124,42 @@ const breakerPromos = ref<ReturnType<typeof getAllMinigames> | null>(null)
 const breakerLabel = ref('')
 
 // ==================== KVIT ELLER DOBBELT ====================
-// Every 12th swipe: show the card extreme-zoomed into center, 2x points if right, -150 if wrong.
-// `isDoubleOrNothing` is a pre-swipe flag — true while the CURRENT card is a DoN card.
-const isDoubleOrNothing = computed(() => {
-  // After N answers, the NEXT swipe will be #(N+1). Trigger at 12, 24, 36...
+// Every 12th swipe: OFFER a DoN bet. Spilleren vælger nu aktivt om de tør satse.
+// - `donPending`: runden er DoN-slot, men spilleren har ikke valgt endnu → vis choice modal
+// - `donAccepted`: null = ikke spurgt, true = satset, false = afvist (normal runde)
+// - `isDoubleOrNothing`: aktiv kun når spilleren har SATSET
+const donAccepted = ref<boolean | null>(null)
+
+const isDonSlot = computed(() => {
   return (localAnswerCount.value + 1) % 12 === 0 && localAnswerCount.value + 1 > 0
 })
 
-// Fyr tension-lyd når DoN-kortet vises (men kun én gang pr. DoN-runde)
-watch(isDoubleOrNothing, (isDoN) => {
-  if (isDoN && !donTensionFired.value) {
+// Spilleren skal vælge før DoN-kortet vises
+const donPending = computed(() => isDonSlot.value && donAccepted.value === null)
+
+// Final DoN-flag — kun true når accepteret
+const isDoubleOrNothing = computed(() => isDonSlot.value && donAccepted.value === true)
+
+// Nulstil valget når vi forlader DoN-sloten
+watch(isDonSlot, (slot) => {
+  if (!slot) donAccepted.value = null
+})
+
+function acceptDoN() {
+  donAccepted.value = true
+  if (!donTensionFired.value) {
     donTensionFired.value = true
     playTension()
-  } else if (!isDoN) {
+  }
+}
+
+function declineDoN() {
+  donAccepted.value = false
+}
+
+// Fyr tension-lyd når DoN-kortet vises (men kun én gang pr. DoN-runde)
+watch(isDoubleOrNothing, (isDoN) => {
+  if (!isDoN) {
     donTensionFired.value = false
   }
 })
@@ -154,12 +177,12 @@ const streakTier = computed(() => {
 })
 
 // ==================== FULLSCREEN OVERLAY COORDINATOR ====================
-// When any fullscreen overlay is showing, smaller toasts hide so they don't stack on top.
-const hasFullscreenOverlay = computed(() =>
-  showFact.value ||
-  !!breakerPromos.value ||
-  activePrank.value?.type === 'jim-rant'
-)
+// Blokerer swipes + skjuler toasts mens DoN-valget venter på svar.
+// - Jim-facts er toasts i bunden (auto-dismiss 5s)
+// - Reklamer er side-panels på desktop (auto-dismiss 7s)
+// - Jim-rant er top-toast (auto-dismiss via prank.duration)
+// - DoN-choice modal ER blokerende (valget kræver aktiv handling)
+const hasFullscreenOverlay = computed(() => donPending.value)
 
 // ==================== PROGRESSIVE CONFETTI ====================
 // Ramps from a tiny pop at streak 3 → full rainbow firework show at streak 30+.
@@ -230,6 +253,7 @@ function playFromBreaker(path: string) {
 
 // Prank-induced button swap
 const buttonsSwapped = computed(() => activePrank.value?.type === 'button-swap')
+// Blur prank — kort duration (1.5s) + banner så det er tydeligt det er Jim der driller
 const cardBlurred = computed(() => activePrank.value?.type === 'blur')
 const upsideDown = computed(() => activePrank.value?.type === 'upside-down')
 
@@ -239,13 +263,15 @@ const shieldActive = computed(() => {
 })
 
 function onKeyDown(e: KeyboardEvent) {
-  // Dismiss fact
-  if (showFact.value) {
+  // DoN choice modal er åben — Enter accepterer, Escape afviser
+  if (donPending.value) {
+    if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); acceptDoN(); return }
+    if (e.code === 'Escape') { e.preventDefault(); declineDoN(); return }
+    // Bloker alle andre taster så man ikke ved en fejl swiper
     e.preventDefault()
-    dismissFact()
     return
   }
-  // Dismiss Jim-rant prank — ANY key closes it (user was stuck before)
+  // Dismiss Jim-rant prank — ANY key closes it (user was stuck før)
   if (activePrank.value?.type === 'jim-rant') {
     e.preventDefault()
     dismissPrank()
@@ -458,12 +484,18 @@ async function processAnswer(guessedLars: boolean, timedOut = false) {
   await new Promise(r => setTimeout(r, 650))
   showFeedback.value = false
 
-  // Lars Fact every 5 answers
+  // Lars Fact every 5 answers — nu som Jim-toast under kortet, ingen popup
+  // der blokerer spillet. Fader ind, bliver i 5s, fader ud.
   if (localAnswerCount.value % 5 === 0) {
     factText.value = getRandomFact()
-    showFact.value = true
+    showJimToast.value = true
+    jimToastQuote.value = factText.value
     recordFactRead()
-    return
+    // Auto-hide efter 5 sekunder — spiller beh\u00f8ver ikke at trykke.
+    setTimeout(() => {
+      showJimToast.value = false
+    }, 5000)
+    // Fortsaet spillet uden at pause
   }
 
   // Maybe trigger Jim prank
@@ -485,7 +517,7 @@ async function processAnswer(guessedLars: boolean, timedOut = false) {
   }
 
   // Minigame BREAKER — only at swipe 4 and 20. Skip if prank/fact is on screen.
-  if (!prank && !showFact.value && BREAKER_TRIGGERS.includes(localAnswerCount.value)) {
+  if (!prank && BREAKER_TRIGGERS.includes(localAnswerCount.value)) {
     breakerPromos.value = getAllMinigames()
     breakerLabel.value = `EFTER ${localAnswerCount.value} SWIPES`
   }
@@ -493,25 +525,22 @@ async function processAnswer(guessedLars: boolean, timedOut = false) {
   readyForNext()
 }
 
-function dismissFact() {
-  showFact.value = false
-  readyForNext()
-}
-
 function readyForNext() {
   isProcessing.value = false
+  // Ryd visuelle pranks (upside-down, blur) så næste kort vises normalt.
+  // Forhindrer at pranken spænder over flere kort hvis spilleren swiper hurtigt.
+  endCardPranks()
   // Start ny timer for næste kort (hvis sværhedsgrad kræver det + ingen overlays blokerer)
   if (canRunTimer.value) startTimer()
 }
 
 // Timer må kun køre når brugeren faktisk KAN svare.
-// Blokerende tilstande: processing, fact/prank/breaker overlays, kvit-eller-dobbelt (ekstra tænketid).
+// Blokerende tilstande: processing, kvit-eller-dobbelt (ekstra tænketid),
+// DoN-choice modal (spilleren skal vælge).
 const canRunTimer = computed(() =>
   !isProcessing.value
-  && !showFact.value
-  && !breakerPromos.value
-  && activePrank.value?.type !== 'jim-rant'
   && !isDoubleOrNothing.value
+  && !donPending.value
   && !!difficulty.value.timerPerSwipeMs
 )
 
@@ -684,36 +713,10 @@ const rightLabel = computed(() => buttonsSwapped.value ? 'Ikke Lars' : 'Det er L
       </Transition>
     </div>
 
-    <!-- Jim's speech bubble -->
-    <div class="px-4 py-1 min-h-[50px] flex items-center justify-center relative">
-      <Transition name="jim-bubble">
-        <div
-          v-if="showJimToast && !hasFullscreenOverlay"
-          :key="jimToastQuote"
-          class="flex items-center gap-2.5 max-w-sm w-full rounded-2xl px-3 py-2.5 relative jim-speech-bubble"
-          :class="feedbackCorrect ? 'bg-success/15 border border-success/30' : 'bg-error/15 border border-error/30'"
-        >
-          <div class="flex-shrink-0 w-10 h-10 jim-avatar-bounce">
-            <svg viewBox="0 0 32 32" class="w-full h-full" fill="none">
-              <circle cx="16" cy="12" r="8" fill="#E0B89A"/>
-              <path d="M10 9 Q16 2 22 9" stroke="#9E3030" stroke-width="0.8" fill="none"/>
-              <circle cx="16" cy="4" r="1" fill="#9E3030"/>
-              <circle cx="13.5" cy="11" r="1" fill="#6AACDB"/>
-              <circle cx="18.5" cy="11" r="1" fill="#6AACDB"/>
-              <rect x="10" y="18" width="12" height="10" rx="2" fill="#F5F0E8"/>
-              <circle cx="13" cy="22" r="1.5" fill="#1A1A1A"/>
-              <circle cx="19" cy="24" r="1.5" fill="#1A1A1A"/>
-            </svg>
-          </div>
-          <div class="flex-1 min-w-0">
-            <p class="text-white text-sm font-body leading-snug font-medium">
-              {{ jimToastQuote }}
-            </p>
-          </div>
-          <span class="text-lg flex-shrink-0">{{ feedbackCorrect ? '👆' : '😤' }}</span>
-        </div>
-      </Transition>
-    </div>
+    <!-- Jim's speech bubble er flyttet ud i JimQuote-komponenten nedenfor.
+         Vi beholder en lille spacer så layoutet ikke springer, men selve
+         beskeden vises kun ét sted (JimQuote i toast-mode). -->
+    <div class="px-4 py-1 min-h-[50px] flex items-center justify-center relative" />
 
     <!-- Power-up bar — skjules på Legendarisk (powerUpsEnabled: false) -->
     <div v-if="difficulty.powerUpsEnabled" class="pt-1 pb-2">
@@ -751,50 +754,12 @@ const rightLabel = computed(() => buttonsSwapped.value ? 'Ikke Lars' : 'Det er L
       :speed-bonus="feedbackSpeedBonus"
     />
 
-    <!-- JIM FAKTA - fullscreen overlay -->
-    <Transition name="jim-fact">
-      <div
-        v-if="showFact"
-        class="absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-        @click="dismissFact"
-      >
-        <div class="mx-6 max-w-sm w-full text-center" @click.stop>
-          <div class="w-20 h-20 mx-auto mb-4">
-            <svg viewBox="0 0 48 52" class="w-full h-full" fill="none">
-              <circle cx="24" cy="16" r="14" fill="#E0B89A"/>
-              <path d="M14 12 Q24 0 34 12" stroke="#9E3030" stroke-width="1.5" fill="none"/>
-              <path d="M16 10 Q24 2 32 10" stroke="#9E3030" stroke-width="1" fill="none"/>
-              <circle cx="24" cy="4" r="2" fill="#9E3030"/>
-              <circle cx="20" cy="15" r="2" fill="#6AACDB"/>
-              <circle cx="28" cy="15" r="2" fill="#6AACDB"/>
-              <path d="M22 20 L26 20" stroke="#B08070" stroke-width="1" stroke-linecap="round"/>
-              <rect x="14" y="28" width="20" height="18" rx="3" fill="#F5F0E8"/>
-              <circle cx="19" cy="34" r="2.5" fill="#1A1A1A"/>
-              <circle cx="29" cy="38" r="3" fill="#1A1A1A"/>
-              <circle cx="24" cy="32" r="1.5" fill="#1A1A1A"/>
-              <path d="M34 28 L40 18 L41 16" stroke="#E0B89A" stroke-width="3" stroke-linecap="round"/>
-              <circle cx="41" cy="15" r="2" fill="#E0B89A"/>
-            </svg>
-          </div>
-
-          <div class="glass rounded-2xl p-6 border border-accent/20">
-            <p class="font-heading font-bold text-accent text-sm uppercase tracking-widest mb-3">
-              Jim fortæller
-            </p>
-            <p class="text-white font-body text-lg leading-relaxed mb-5">
-              {{ factText }}
-            </p>
-            <button
-              class="px-8 py-3 rounded-xl bg-accent text-primary font-heading font-bold text-sm uppercase tracking-wider btn-press hover:bg-accent-light transition-colors"
-              @click="dismissFact"
-            >
-              Ja, Jim... Videre!
-            </button>
-            <p class="text-muted/40 text-xs mt-3 font-mono">Tryk hvor som helst for at fortsætte</p>
-          </div>
-        </div>
-      </div>
-    </Transition>
+    <!-- JIM FAKTA — nu som ikke-blokerende Jim-toast i bunden -->
+    <JimQuote
+      :quote="jimToastQuote"
+      :show="showJimToast && !hasFullscreenOverlay"
+      mode="toast"
+    />
 
     <!-- Jim Pranks overlay — rant er nu klik-dismissable -->
     <JimPrankOverlay :prank="activePrank" :quote="prankQuote" @dismiss="dismissPrank" />
@@ -805,15 +770,137 @@ const rightLabel = computed(() => buttonsSwapped.value ? 'Ikke Lars' : 'Det er L
     <!-- Achievement toasts -->
     <AchievementToast />
 
-    <!-- Minigame BREAKER — full-screen takeover at swipe 4 and 20.
-         Replaces the old small teaser + single-game interstitial.
-         Shows all 3 minigames at once; user picks or skips. -->
-    <MinigameBreaker
+    <!-- HINT ZOOM-OVERLAY — når Jim kigger nærmere, vises kortet i fuld skærm
+         med dramatisk zoom + dim backdrop. Auto-lukker når hintActive bliver false
+         (styret af usePowerUps efter ~2s). Brugeren kan ikke swipe under zoom. -->
+    <Transition name="hint-zoom-overlay">
+      <div
+        v-if="hintActive && currentImage"
+        class="fixed inset-0 z-[70] flex items-center justify-center pointer-events-none"
+      >
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/85 backdrop-blur-md" />
+
+        <!-- Zoomed card — fylder ~85% af viewport-højden -->
+        <div class="relative z-10 hint-zoom-card">
+          <!-- Ring af glow omkring -->
+          <div class="absolute inset-0 rounded-3xl shadow-[0_0_120px_rgba(106,172,219,0.6)] pointer-events-none" />
+
+          <div class="relative rounded-3xl overflow-hidden border-4 border-[#6AACDB]/70 bg-surface">
+            <video
+              v-if="currentImage.type === 'video'"
+              :src="currentImage.file"
+              class="block object-contain max-w-[85vw] max-h-[80vh]"
+              muted
+              loop
+              autoplay
+              playsinline
+            />
+            <img
+              v-else
+              :src="currentImage.file"
+              :alt="currentImage.isLars ? 'Lars?' : 'Person'"
+              class="block object-contain max-w-[85vw] max-h-[80vh]"
+              draggable="false"
+            >
+          </div>
+
+          <!-- Top label -->
+          <div class="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-2 glass rounded-full px-4 py-2 border border-[#6AACDB]/60 shadow-glow">
+            <Icon name="mdi:magnify-plus" size="18" class="text-[#6AACDB]" />
+            <span class="text-[#6AACDB] text-sm font-heading font-black tracking-widest uppercase">
+              Jim kigger nærmere
+            </span>
+          </div>
+
+          <!-- Bottom hint -->
+          <p class="absolute -bottom-10 left-1/2 -translate-x-1/2 text-white/60 text-xs font-body italic whitespace-nowrap">
+            Kig grundigt — vinduet lukker selv
+          </p>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Side-panel reklamer — KUN på desktop, auto-fader ind/ud.
+         Erstatter den gamle fullscreen BREAKER. Brugeren bliver ikke
+         længere afbrudt — reklamerne forsvinder selv efter 7 sekunder.
+         På mobil springes de helt over. -->
+    <DesktopSideAds
       :promos="breakerPromos"
       :trigger-label="breakerLabel"
       @dismiss="dismissBreaker"
       @play="playFromBreaker"
     />
+
+    <!-- KVIT ELLER DOBBELT — valg-modal. Spilleren vælger aktivt om de tør satse.
+         Fullscreen takeover med dramatisk pulse. Swipe og knapper er disabled
+         mens modalen er åben (pointer-events-none på resten sker via overlay). -->
+    <Transition name="don-choice">
+      <div
+        v-if="donPending"
+        class="fixed inset-0 z-[90] flex items-center justify-center px-6"
+        style="background: radial-gradient(ellipse at center, rgba(232, 67, 147, 0.35) 0%, rgba(10, 10, 20, 0.97) 55%, rgba(5, 5, 10, 0.99) 100%); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);"
+      >
+        <!-- Baggrund-pulse rings -->
+        <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div class="don-ring don-ring-1" />
+          <div class="don-ring don-ring-2" />
+          <div class="don-ring don-ring-3" />
+        </div>
+
+        <div class="relative z-10 max-w-sm w-full text-center don-modal-in">
+          <!-- Header -->
+          <div class="mb-4">
+            <p class="text-xs font-mono uppercase tracking-[0.3em] text-pink-accent/80 mb-2">
+              Specialrunde #{{ Math.floor((localAnswerCount + 1) / 12) }}
+            </p>
+            <h2 class="don-title">
+              KVIT<br>ELLER<br>DOBBELT
+            </h2>
+          </div>
+
+          <!-- Stakes -->
+          <div class="glass rounded-2xl p-5 mb-6 border-2 border-pink-accent/40 shadow-[0_0_40px_rgba(232,67,147,0.4)]">
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <p class="text-[9px] font-heading font-black uppercase tracking-widest text-green-400 mb-1">Vinder du</p>
+                <p class="text-white font-heading font-black text-2xl">2×</p>
+                <p class="text-muted/70 text-[10px] font-body mt-0.5">point</p>
+              </div>
+              <div>
+                <p class="text-[9px] font-heading font-black uppercase tracking-widest text-error mb-1">Taber du</p>
+                <p class="text-white font-heading font-black text-2xl">−150</p>
+                <p class="text-muted/70 text-[10px] font-body mt-0.5">point</p>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-white/80 font-body text-sm mb-5 leading-snug">
+            Tør du satse på næste kort, Lars?
+          </p>
+
+          <!-- Actions -->
+          <div class="flex flex-col gap-3">
+            <button
+              type="button"
+              class="don-accept-btn"
+              @click="acceptDoN"
+            >
+              <Icon name="mdi:fire" size="20" />
+              <span>JA, JEG SATSER!</span>
+              <Icon name="mdi:fire" size="20" />
+            </button>
+            <button
+              type="button"
+              class="w-full py-3 rounded-xl glass text-muted hover:text-white font-heading font-bold text-xs uppercase tracking-widest border border-white/10 hover:border-white/30 transition-colors"
+              @click="declineDoN"
+            >
+              Nej tak, almindelig runde
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 
   <div v-else class="h-screen flex items-center justify-center">
@@ -866,20 +953,67 @@ const rightLabel = computed(() => buttonsSwapped.value ? 'Ikke Lars' : 'Det er L
   transform: rotate(45deg);
 }
 
-/* Power-up effects */
-.hint-zoom {
-  transform: scale(1.15);
+/* Power-up effects.
+   .hint-zoom er fjernet som scale-wrapper — Jim-kigger-pranken viser nu
+   en fullscreen zoom-overlay i stedet (se .hint-zoom-card nedenfor). */
+.hint-zoom {}
+
+/* Hint fullscreen zoom — dramatic enter/leave */
+.hint-zoom-overlay-enter-active {
+  transition: opacity 0.25s ease-out;
+}
+.hint-zoom-overlay-leave-active {
+  transition: opacity 0.35s ease-in;
+}
+.hint-zoom-overlay-enter-from,
+.hint-zoom-overlay-leave-to {
+  opacity: 0;
 }
 
-.card-blur-prank {
-  filter: blur(8px) saturate(0.7);
-  transition: filter 0.3s ease;
+.hint-zoom-card {
+  animation: hint-zoom-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.hint-zoom-overlay-leave-to .hint-zoom-card {
+  animation: hint-zoom-out 0.3s ease-in forwards;
+}
+
+@keyframes hint-zoom-in {
+  0% {
+    transform: scale(0.35);
+    opacity: 0;
+    filter: blur(8px);
+  }
+  60% {
+    filter: blur(0);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+@keyframes hint-zoom-out {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(0.6);
+    opacity: 0;
+  }
 }
 
 /* Prank: upside down */
 .upside-down-wrapper {
   transform: rotate(180deg);
   transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Prank: blur — kort, tydelig, kun via active class så ingen state-leak */
+.card-blur-prank {
+  filter: blur(8px) saturate(0.7);
+  transition: filter 0.3s ease;
 }
 
 .prank-flash {
@@ -901,18 +1035,130 @@ const rightLabel = computed(() => buttonsSwapped.value ? 'Ikke Lars' : 'Det er L
 /* Extreme zoom into the center of the card's image/video */
 .don-zoom :deep(img),
 .don-zoom :deep(video) {
-  transform: scale(4.8);
+  transform: scale(5.5);
   transition: transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
-  filter: contrast(1.08) saturate(1.15);
+  filter: contrast(1.15) saturate(1.3);
 }
 .don-zoom {
-  animation: don-card-pulse 2s ease-in-out infinite;
-  box-shadow: 0 0 60px rgba(232, 67, 147, 0.35);
+  animation: don-card-pulse 1.3s ease-in-out infinite;
+  box-shadow:
+    0 0 60px rgba(232, 67, 147, 0.55),
+    0 0 120px rgba(232, 67, 147, 0.25);
   border-radius: 1.5rem;
+  position: relative;
+}
+.don-zoom::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 2rem;
+  background: linear-gradient(135deg, #E84393, #F5A623, #E84393);
+  background-size: 300% 300%;
+  z-index: -1;
+  opacity: 0.9;
+  animation: don-border-flow 2.5s linear infinite;
+  filter: blur(2px);
 }
 @keyframes don-card-pulse {
-  0%, 100% { filter: brightness(1); box-shadow: 0 0 40px rgba(232, 67, 147, 0.3); }
-  50% { filter: brightness(1.08); box-shadow: 0 0 75px rgba(232, 67, 147, 0.55); }
+  0%, 100% {
+    filter: brightness(1);
+    box-shadow: 0 0 50px rgba(232, 67, 147, 0.4), 0 0 110px rgba(232, 67, 147, 0.18);
+  }
+  50% {
+    filter: brightness(1.15);
+    box-shadow: 0 0 95px rgba(232, 67, 147, 0.75), 0 0 180px rgba(232, 67, 147, 0.35);
+  }
+}
+@keyframes don-border-flow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 300% 50%; }
+}
+
+/* ==================== DON CHOICE MODAL ==================== */
+.don-choice-enter-active { transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.don-choice-leave-active { transition: all 0.25s ease-in; }
+.don-choice-enter-from,
+.don-choice-leave-to { opacity: 0; }
+
+.don-modal-in {
+  animation: don-modal-pop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes don-modal-pop {
+  0% { transform: scale(0.7); opacity: 0; }
+  70% { transform: scale(1.03); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.don-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 900;
+  font-size: 3.5rem;
+  line-height: 0.95;
+  letter-spacing: 0.02em;
+  background: linear-gradient(135deg, #E84393 0%, #F5A623 50%, #E84393 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  text-shadow: 0 0 40px rgba(232, 67, 147, 0.5);
+  animation: don-title-shift 3s ease-in-out infinite, don-title-pulse 1.2s ease-in-out infinite;
+}
+@keyframes don-title-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@keyframes don-title-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}
+
+/* Pulserende rings bag modalen */
+.don-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid rgba(232, 67, 147, 0.4);
+  animation: don-ring-pulse 2.4s ease-out infinite;
+}
+.don-ring-1 { width: 300px; height: 300px; }
+.don-ring-2 { width: 300px; height: 300px; animation-delay: 0.8s; }
+.don-ring-3 { width: 300px; height: 300px; animation-delay: 1.6s; }
+@keyframes don-ring-pulse {
+  0% { transform: scale(0.8); opacity: 0.8; border-color: rgba(232, 67, 147, 0.6); }
+  100% { transform: scale(3); opacity: 0; border-color: rgba(232, 67, 147, 0); }
+}
+
+/* Accept-knap — vild og tillokkende */
+.don-accept-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 16px 24px;
+  border-radius: 16px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 900;
+  font-size: 15px;
+  letter-spacing: 0.15em;
+  color: #1A1A20;
+  background: linear-gradient(135deg, #E84393 0%, #F5A623 50%, #E84393 100%);
+  background-size: 200% 200%;
+  box-shadow:
+    0 8px 24px rgba(232, 67, 147, 0.5),
+    0 0 40px rgba(232, 67, 147, 0.35);
+  animation: don-accept-glow 1.5s ease-in-out infinite, don-title-shift 3s ease-in-out infinite;
+  transition: transform 0.1s ease;
+}
+.don-accept-btn:hover {
+  transform: scale(1.03);
+}
+.don-accept-btn:active {
+  transform: scale(0.97);
+}
+@keyframes don-accept-glow {
+  0%, 100% { box-shadow: 0 8px 24px rgba(232, 67, 147, 0.5), 0 0 40px rgba(232, 67, 147, 0.35); }
+  50% { box-shadow: 0 8px 32px rgba(232, 67, 147, 0.75), 0 0 60px rgba(232, 67, 147, 0.55); }
 }
 
 .don-banner {
@@ -1014,8 +1260,8 @@ const rightLabel = computed(() => buttonsSwapped.value ? 'Ikke Lars' : 'Det er L
 }
 
 @keyframes streak-pulse {
-  0%, 100% { transform: scale(1); filter: blur(0); }
-  50% { transform: scale(1.04); filter: blur(1px); }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
 }
 @keyframes streak-hue {
   0%, 100% { filter: hue-rotate(0deg); }

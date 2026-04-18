@@ -12,6 +12,7 @@ const emit = defineEmits<{
 }>()
 
 const cardRef = ref<HTMLElement | null>(null)
+const imgRef = ref<HTMLImageElement | null>(null)
 const videoRef = ref<HTMLVideoElement | null>(null)
 const imageLoaded = ref(false)
 const imageError = ref(false)
@@ -31,11 +32,27 @@ const isVideo = computed(() => {
   return ['mp4', 'webm', 'mov', 'ogg'].includes(ext || '')
 })
 
-// Reset load state when image changes
-watch(() => props.image.file, () => {
-  imageLoaded.value = false
-  imageError.value = false
-})
+// Bulletproof image-load detection. På et cache-hit fires @load ikke
+// pålideligt på tværs af browsere. Vi kombinerer 3 strategier:
+// 1) @load handler (almindelig vej)
+// 2) img.complete check (synkron cache hit)
+// 3) img.decode() promise (venter på at billedet er render-klar)
+// Skeletten må aldrig hænge fast — det var det der gav "blurry billeder efter 30 swipes".
+async function ensureImageLoaded() {
+  if (isVideo.value) return
+  const img = imgRef.value
+  if (!img) return
+  if (img.complete && img.naturalWidth > 0) {
+    imageLoaded.value = true
+    return
+  }
+  try {
+    await img.decode()
+    imageLoaded.value = true
+  } catch {
+    // decode() kan fejle for SVG eller på cross-origin — fald tilbage til @load
+  }
+}
 
 // Auto-play video when card becomes active
 watch(() => props.isActive, (active) => {
@@ -48,6 +65,7 @@ onMounted(() => {
   if (isVideo.value && videoRef.value) {
     videoRef.value.play().catch(() => {})
   }
+  ensureImageLoaded()
 })
 
 // Label visibility based on swipe direction
@@ -89,11 +107,14 @@ const borderColor = computed(() => {
   >
     <!-- Media container - shows full image with padding -->
     <div class="w-full h-full bg-surface overflow-hidden flex items-center justify-center relative">
-      <!-- Loading state (dim skeleton) -->
+      <!-- Loading state — solid bg + lille spinner, ikke en gradient
+           der kan forveksles med et blurry billede. -->
       <div
         v-if="!imageLoaded && !imageError && !isVideo"
-        class="absolute inset-0 bg-gradient-to-br from-surface via-surface/60 to-surface animate-pulse"
-      />
+        class="absolute inset-0 flex items-center justify-center bg-surface"
+      >
+        <div class="w-8 h-8 rounded-full border-2 border-white/15 border-t-white/50 animate-spin" />
+      </div>
 
       <!-- Error fallback -->
       <div
@@ -132,6 +153,7 @@ const borderColor = computed(() => {
       <!-- Image -->
       <img
         v-else
+        ref="imgRef"
         :src="image.file"
         :alt="image.isLars ? 'Lars?' : 'Person'"
         class="w-full h-full object-contain"

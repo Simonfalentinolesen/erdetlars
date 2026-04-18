@@ -1,3 +1,6 @@
+// Alle pranks har kort duration nu (1.5s) + en tydelig "JIM PRANKER"-banner
+// så spilleren aldrig er i tvivl om hvad der sker. Pranken ender også
+// automatisk når spilleren swiper — så den ikke spænder over flere kort.
 export type PrankType = 'button-swap' | 'blur' | 'dalmatian' | 'jim-rant' | 'upside-down'
 
 export interface PrankDef {
@@ -10,14 +13,14 @@ export interface PrankDef {
 const PRANK_DEFS: Record<PrankType, PrankDef> = {
   'button-swap': {
     type: 'button-swap',
-    duration: 4000,
+    duration: 2500,
     preQuote: 'Lars, pas på...',
     postQuote: 'HA! Knapperne var byttet!',
   },
   'blur': {
     type: 'blur',
-    duration: 2000,
-    preQuote: 'Ups, Lars!',
+    duration: 1500,
+    preQuote: 'Se nærmere, Lars...',
     postQuote: 'Var det for sløret? HA!',
   },
   'dalmatian': {
@@ -28,14 +31,13 @@ const PRANK_DEFS: Record<PrankType, PrankDef> = {
   },
   'jim-rant': {
     type: 'jim-rant',
-    // Kortere varighed (2s) + klik-dismiss i overlay — intet lyd-element, kun visuel "rant"
     duration: 2000,
     preQuote: 'Lars, du tager dig selv alt for seriøst. Slap af.',
     postQuote: 'Tak for din tid, kriger.',
   },
   'upside-down': {
     type: 'upside-down',
-    duration: 2500,
+    duration: 1500,
     preQuote: 'Lars står på hovedet!',
     postQuote: 'Verden vender tilbage.',
   },
@@ -81,16 +83,29 @@ export const useJimPranks = () => {
     prankQuote.value = def.preQuote
     prankCount.value++
 
-    // Auto-expire
+    // Auto-expire (normal path)
     setTimeout(() => {
       if (activePrank.value === def) {
         prankQuote.value = def.postQuote
         setTimeout(() => {
-          activePrank.value = null
-          prankQuote.value = ''
+          if (activePrank.value === def) {
+            activePrank.value = null
+            prankQuote.value = ''
+          }
         }, 1400)
       }
     }, def.duration)
+
+    // HARD SAFETY NET: uanset hvad der sker, clear prank efter maksimum
+    // duration + 5s. Forhindrer "slørede billeder efter 30 swipes"-bug'en
+    // der skete når blur-prank'en sad fast pga. et state race.
+    const maxLifetime = def.duration + 5000
+    setTimeout(() => {
+      if (activePrank.value === def) {
+        activePrank.value = null
+        prankQuote.value = ''
+      }
+    }, maxLifetime)
 
     return def
   }
@@ -98,6 +113,20 @@ export const useJimPranks = () => {
   function dismiss() {
     activePrank.value = null
     prankQuote.value = ''
+  }
+
+  /**
+   * Ryd visuelle pranks der forstyrrer det NÆSTE kort (upside-down, blur).
+   * Kaldes efter en swipe så pranken ikke spænder over flere kort.
+   * button-swap bevares — den skal vare nok til at spilleren ser bytte-effekten.
+   * dalmatian + jim-rant har deres egne lifecycle.
+   */
+  function endCardPranks() {
+    const t = activePrank.value?.type
+    if (t === 'upside-down' || t === 'blur') {
+      activePrank.value = null
+      prankQuote.value = ''
+    }
   }
 
   if (import.meta.client) loadSettings()
@@ -110,5 +139,6 @@ export const useJimPranks = () => {
     toggle,
     maybeTrigger,
     dismiss,
+    endCardPranks,
   }
 }
