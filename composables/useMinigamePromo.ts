@@ -66,7 +66,7 @@ const MINIGAMES: MinigamePromo[] = [
     bulletPoints: [
       '6 levels med hver sin chef',
       'Power-ups: Øl-Lars, Viking-Lars, Regnbue-Lars',
-      'Jim Lyngvild er skurken',
+      'Jim er skurken',
     ],
     icon: 'mdi:shield-sword',
     emoji: '⚔️',

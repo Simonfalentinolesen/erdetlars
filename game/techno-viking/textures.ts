@@ -227,7 +227,7 @@ function drawLars(scene: Phaser.Scene, key: string, o: LarsStageOpts, step: 'a' 
 }
 
 // =============================================================================
-// JIM LYNGVILD
+// JIM
 // =============================================================================
 
 function buildJimFrames(scene: Phaser.Scene) {
@@ -239,79 +239,141 @@ function buildJimFrames(scene: Phaser.Scene) {
 function drawJim(scene: Phaser.Scene, key: string, mode: 'idle' | 'point' | 'cackle') {
   const W = 120
   const H = 180
+  const cx = W / 2
   const g = scene.add.graphics()
+
+  // Kanon-Jim: skaldet hoved, rød Celtic-arch på issen, ice-blue øjne,
+  // dalmatiner-skjorte med sort læderjakke (signatur-look fra hovedspil + Viking Lars).
 
   // Skygge
   g.fillStyle(0x000000, 0.3)
-  g.fillEllipse(W / 2, H - 6, 60, 8)
+  g.fillEllipse(cx, H - 6, 60, 8)
 
-  // Robe / kåbe — rød, lang
-  g.fillStyle(COLORS.JIM_ROBE, 1)
-  g.fillRoundedRect(W / 2 - 32, H - 120, 64, 95, 6)
-  // Pels-kant forneden og ved hals
-  g.fillStyle(COLORS.JIM_FUR, 1)
-  g.fillRoundedRect(W / 2 - 34, H - 35, 68, 12, 4)
-  g.fillRoundedRect(W / 2 - 34, H - 125, 68, 14, 4)
+  // Sort læderjakke (collar/skuldre — Jims signatur)
+  g.fillStyle(COLORS.JIM_JACKET, 1)
+  g.fillRoundedRect(cx - 36, H - 115, 72, 18, 6)
 
-  // Hoved
-  g.fillStyle(COLORS.JIM_SKIN, 1)
-  g.fillCircle(W / 2, H - 135, 22)
+  // Dalmatiner-skjorte (hvid baggrund) under jakken
+  g.fillStyle(COLORS.JIM_SHIRT, 1)
+  g.fillRoundedRect(cx - 28, H - 100, 56, 75, 6)
 
-  // Langt lyst hår (bagud)
-  g.fillStyle(0xe8d59a, 1)
-  g.fillRoundedRect(W / 2 - 28, H - 138, 56, 30, 10)
+  // Sorte dalmatiner-pletter
+  g.fillStyle(COLORS.JIM_SHIRT_SPOT, 1)
+  g.fillCircle(cx - 14, H - 90, 4)
+  g.fillCircle(cx + 10, H - 78, 5)
+  g.fillCircle(cx - 4, H - 60, 3.5)
+  g.fillCircle(cx + 16, H - 50, 4.5)
+  g.fillCircle(cx - 18, H - 45, 3)
+  g.fillCircle(cx + 4, H - 30, 4)
 
-  // Ansigts-tatoveringer (rød)
-  g.lineStyle(2, COLORS.JIM_TATTOO, 0.95)
+  // V-neck antydning
+  g.lineStyle(1.5, 0xc0b8a8, 0.7)
   g.beginPath()
-  g.moveTo(W / 2 - 14, H - 144)
-  g.lineTo(W / 2 - 6, H - 128)
-  g.moveTo(W / 2 + 14, H - 144)
-  g.lineTo(W / 2 + 6, H - 128)
-  g.moveTo(W / 2 - 10, H - 132)
-  g.lineTo(W / 2 + 10, H - 132)
+  g.moveTo(cx - 8, H - 100)
+  g.lineTo(cx, H - 88)
+  g.moveTo(cx + 8, H - 100)
+  g.lineTo(cx, H - 88)
   g.strokePath()
 
-  // Øjne — stærk blå
-  g.fillStyle(COLORS.JIM_EYES, 1)
-  g.fillCircle(W / 2 - 7, H - 138, 3)
-  g.fillCircle(W / 2 + 7, H - 138, 3)
-  g.fillStyle(0x000000, 1)
-  g.fillCircle(W / 2 - 7, H - 138, 1.5)
-  g.fillCircle(W / 2 + 7, H - 138, 1.5)
+  // Hals
+  g.fillStyle(COLORS.JIM_SKIN, 1)
+  g.fillRoundedRect(cx - 7, H - 118, 14, 12, 2)
 
-  // Mund
+  // Hoved (skaldet — glat, lys hud)
+  g.fillStyle(COLORS.JIM_SKIN, 1)
+  g.fillCircle(cx, H - 135, 22)
+
+  // Skalle-shine (lille højlys på issen — vigtig "Jim-glans"-effekt)
+  g.fillStyle(0xfff5e8, 0.4)
+  g.fillEllipse(cx - 5, H - 148, 12, 6)
+
+  // Rød Celtic-arch tatovering hen over panden / issen (kanon)
+  g.lineStyle(2.2, COLORS.JIM_TATTOO, 0.95)
+  // Hoved-arch
+  g.beginPath()
+  g.moveTo(cx - 16, H - 138)
+  g.lineTo(cx - 12, H - 150)
+  g.lineTo(cx, H - 154)
+  g.lineTo(cx + 12, H - 150)
+  g.lineTo(cx + 16, H - 138)
+  g.strokePath()
+  // Inder-arch
+  g.lineStyle(1.4, COLORS.JIM_TATTOO, 0.9)
+  g.beginPath()
+  g.moveTo(cx - 11, H - 142)
+  g.lineTo(cx - 7, H - 148)
+  g.lineTo(cx, H - 150)
+  g.lineTo(cx + 7, H - 148)
+  g.lineTo(cx + 11, H - 142)
+  g.strokePath()
+  // Center-rune
+  g.fillStyle(COLORS.JIM_TATTOO, 0.95)
+  g.fillCircle(cx, H - 152, 1.8)
+
+  // Øre + ørering (venstre øre synlig)
+  g.fillStyle(COLORS.JIM_SKIN, 1)
+  g.fillEllipse(cx - 22, H - 134, 4, 7)
+  g.fillStyle(0xd8d8dc, 1)
+  g.fillCircle(cx - 22, H - 128, 1.5)
+
+  // Skarpe mørke øjenbryn
+  g.lineStyle(1.6, 0x2a1808, 1)
+  g.beginPath()
+  g.moveTo(cx - 12, H - 142)
+  g.lineTo(cx - 4, H - 144)
+  g.moveTo(cx + 4, H - 144)
+  g.lineTo(cx + 12, H - 142)
+  g.strokePath()
+
+  // Øjne — ice-blue, intense
+  g.fillStyle(0xf0eada, 1)
+  g.fillEllipse(cx - 7, H - 138, 6, 4)
+  g.fillEllipse(cx + 7, H - 138, 6, 4)
+  g.fillStyle(COLORS.JIM_EYES, 1)
+  g.fillCircle(cx - 7, H - 138, 2.2)
+  g.fillCircle(cx + 7, H - 138, 2.2)
+  g.fillStyle(0x000000, 1)
+  g.fillCircle(cx - 7, H - 138, 1)
+  g.fillCircle(cx + 7, H - 138, 1)
+
+  // Mund — stram, glatbarberet kæbe (varierer efter mode)
   if (mode === 'cackle') {
+    // Grin med tænder
     g.fillStyle(0x1a0000, 1)
-    g.fillRoundedRect(W / 2 - 8, H - 125, 16, 7, 3)
+    g.fillRoundedRect(cx - 8, H - 125, 16, 7, 3)
     g.fillStyle(0xffffff, 1)
-    g.fillRect(W / 2 - 6, H - 124, 12, 2)
+    g.fillRect(cx - 6, H - 124, 12, 2)
   } else if (mode === 'point') {
+    // Halvåben mund (peger og taler)
     g.fillStyle(0x1a0000, 1)
-    g.fillRoundedRect(W / 2 - 4, H - 124, 10, 3, 2)
+    g.fillRoundedRect(cx - 4, H - 124, 10, 3, 2)
   } else {
-    g.fillStyle(0x1a0000, 1)
-    g.fillRect(W / 2 - 4, H - 122, 8, 2)
+    // Stram, neutral linje
+    g.lineStyle(1.5, 0x8b4a3a, 1)
+    g.beginPath()
+    g.moveTo(cx - 5, H - 122)
+    g.lineTo(cx + 5, H - 122)
+    g.strokePath()
   }
 
   // Arme / pegefinger
   if (mode === 'point') {
-    // Peger mod højre (toward Lars)
+    // Peger mod højre (mod Lars)
     g.lineStyle(12, COLORS.JIM_SKIN, 1)
     g.beginPath()
-    g.moveTo(W / 2 + 24, H - 100)
-    g.lineTo(W / 2 + 50, H - 110)
+    g.moveTo(cx + 24, H - 90)
+    g.lineTo(cx + 50, H - 100)
     g.strokePath()
     g.fillStyle(COLORS.JIM_SKIN, 1)
-    g.fillTriangle(W / 2 + 50, H - 115, W / 2 + 50, H - 105, W / 2 + 62, H - 110)
+    g.fillTriangle(cx + 50, H - 105, cx + 50, H - 95, cx + 62, H - 100)
   } else {
-    // Arme korslagt
-    g.lineStyle(14, COLORS.JIM_ROBE, 1)
+    // Arme korslagt — sort jakke-ærmer
+    g.lineStyle(14, COLORS.JIM_JACKET, 1)
     g.beginPath()
-    g.moveTo(W / 2 - 22, H - 100)
-    g.lineTo(W / 2 + 22, H - 85)
-    g.moveTo(W / 2 + 22, H - 100)
-    g.lineTo(W / 2 - 22, H - 85)
+    g.moveTo(cx - 22, H - 90)
+    g.lineTo(cx + 22, H - 75)
+    g.moveTo(cx + 22, H - 90)
+    g.lineTo(cx - 22, H - 75)
     g.strokePath()
   }
 

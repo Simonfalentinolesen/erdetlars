@@ -259,7 +259,7 @@ export function useGameEngine(canvasRef: Ref<HTMLCanvasElement | null>) {
     c.restore()
   }
 
-  // Draw Jim Lyngvild helper - BALD, red scalp tattoos, ice-blue eyes, stern look
+  // Draw Jim helper - BALD, red scalp tattoos, ice-blue eyes, stern look
   function drawJim(x: number, y: number, scale: number = 1) {
     if (!ctx.value) return
     const c = ctx.value

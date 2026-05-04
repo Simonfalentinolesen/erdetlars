@@ -3,7 +3,7 @@
  * Techno Viking — Phaser 3 rhythm-parade game.
  *
  * Baseret på TECHNO_VIKING_Game_Design_Document.md. Lars marcherer mod
- * pølsevognen kl. 03:47 mens Jim Lyngvild-trickster kommenterer fra siden.
+ * pølsevognen kl. 03:47 mens Jim-trickster kommenterer fra siden.
  * Rammer pile på beat, samler følgere, transformer fra "Casual Lars" til
  * TECHNO VIKING.
  *

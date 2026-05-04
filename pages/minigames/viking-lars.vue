@@ -2363,7 +2363,7 @@ function render() {
       c.moveTo(e.x + (e.dir > 0 ? 20 : 4), e.y + 10 + sink)
       c.lineTo(e.x + (e.dir > 0 ? 30 : -6), e.y + 2 + sink); c.stroke()
     } else if (e.type === 'wolf') {
-      // FENRIS-HVALP: lille ulv med dalmatinermønster (Jim-Lyngvild ref)
+      // FENRIS-HVALP: lille ulv med dalmatinermønster (Jim-ref)
       c.fillStyle = '#F8F4EC'
       c.beginPath(); c.ellipse(e.x + 15, e.y + 14, 15, 10, 0, 0, Math.PI * 2); c.fill()
       c.beginPath(); c.arc(e.x + (e.dir > 0 ? 28 : 2), e.y + 8, 7, 0, Math.PI * 2); c.fill()
@@ -2609,7 +2609,7 @@ function render() {
 
       // Massive body
       c.fillStyle = '#3A2020'; c.beginPath(); c.roundRect(e.x + 5 + bShake, e.y + 18, 40, 42, 4); c.fill()
-      // DALMATIAN PATTERN on armor (Jim-Lyngvild ref — white bone fragments on dark armor)
+      // DALMATIAN PATTERN on armor (Jim-ref — white bone fragments on dark armor)
       c.fillStyle = '#F0E8DC'
       c.beginPath(); c.arc(e.x + 12 + bShake, e.y + 24, 2.2, 0, Math.PI * 2); c.fill()
       c.beginPath(); c.arc(e.x + 22 + bShake, e.y + 30, 1.8, 0, Math.PI * 2); c.fill()
@@ -2682,7 +2682,7 @@ function render() {
       c.fillStyle = '#FF6600'; c.beginPath(); c.arc(e.x + 9, e.y + 4, 1, 0, Math.PI * 2); c.fill()
       c.beginPath(); c.arc(e.x + 15, e.y + 4, 1, 0, Math.PI * 2); c.fill()
     } else if (e.type === 'fire_wolf') {
-      // ILD-ULV - brændende ulv med SKALDET hoved + Celtic-tattoo (Jim-Lyngvild ulven)
+      // ILD-ULV - brændende ulv med SKALDET hoved + Celtic-tattoo (Jim-ulven)
       c.fillStyle = '#3A2010'
       c.beginPath(); c.ellipse(e.x + 15, e.y + 14, 15, 10, 0, 0, Math.PI * 2); c.fill()
       // Bald head (pink/tan, no fur) — Jim's shaved head on a wolf body
@@ -3811,7 +3811,7 @@ function render() {
       c.strokeStyle = 'rgba(139, 32, 32, 0.5)'; c.lineWidth = 2
       c.beginPath(); c.roundRect(14, boxY, W - 28, boxH, 14); c.stroke()
 
-      // ============ JIM LYNGVILD PORTRAIT ============
+      // ============ JIM PORTRAIT ============
       // Ikoniske træk: fuldstændig skaldet, glatbarberet, skarp kæbe,
       // piercing blå øjne, mørke brune bryn, Celtic-tattoo på hals, ørering
       const portR = 28
@@ -3987,7 +3987,7 @@ function render() {
 
       // Speaker name - BIGGER
       c.fillStyle = '#9E3030'; c.font = 'bold 14px "Space Grotesk"'; c.textAlign = 'left'
-      c.fillText(line.speaker === 'loke' ? 'LOKE' : 'JIM LYNGVILD', portX + portR + 14, boxY + 26)
+      c.fillText(line.speaker === 'loke' ? 'LOKE' : 'JIM', portX + portR + 14, boxY + 26)
 
       // Text (typewriter) - BIGGER
       c.fillStyle = '#E8E8E8'; c.font = '16px "DM Sans"'
@@ -4033,7 +4033,7 @@ function render() {
       c.fillText(`Final Score: ${score.value}`, W / 2, H * 0.48)
       c.fillText('Tak for at spille.', W / 2, H * 0.48 + 24)
       c.fillStyle = '#555'; c.font = '11px "DM Sans"'
-      c.fillText('Skabt af Lars\u2019 venner med k\u00e6rlighed, \u00f8l og Jim Lyngvild.', W / 2, H * 0.56)
+      c.fillText('Skabt af Lars\u2019 venner med k\u00e6rlighed, \u00f8l og Jim.', W / 2, H * 0.56)
       // Buttons
       const pp = 0.5 + Math.sin(time.value * 3) * 0.3
       c.fillStyle = `rgba(201, 168, 76, ${pp})`; c.beginPath(); c.roundRect(W / 2 - 100, H * 0.68, 200, 36, 10); c.fill()
@@ -4217,10 +4217,10 @@ function render() {
       { text: '— MEDVIRKENDE —', size: 18, color: '#C9A84C', bold: true, gap: 50 },
       { text: 'Lars Grundvad', size: 22, color: '#fff', bold: true, gap: 4 },
       { text: 'som Sig Selv', size: 14, color: '#aaa', gap: 40 },
-      { text: 'Jim Lyngvild', size: 22, color: '#fff', bold: true, gap: 4 },
+      { text: 'Jim', size: 22, color: '#fff', bold: true, gap: 4 },
       { text: 'som Sig Selv', size: 14, color: '#aaa', gap: 40 },
       { text: 'Loke', size: 22, color: '#fff', bold: true, gap: 4 },
-      { text: 'som Jim Lyngvild', size: 14, color: '#aaa', gap: 40 },
+      { text: 'som Jim', size: 14, color: '#aaa', gap: 40 },
       { text: 'Odin Alfader', size: 20, color: '#fff', bold: true, gap: 4 },
       { text: 'som Kongen af Valhalla', size: 14, color: '#aaa', gap: 40 },
       { text: 'Surtr, Hjortemanden, Draugr & Sinmara', size: 18, color: '#fff', gap: 4 },

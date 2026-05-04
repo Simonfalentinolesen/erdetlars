@@ -90,12 +90,13 @@ export const COLORS = {
   LARS_TATTOO: 0x3a2a24,
   LARS_TATTOO_GLOW: 0xff5a88,
 
-  // Jim palette
+  // Jim palette (kanon: skaldet, dalmatiner-skjorte, sort læderjakke)
   JIM_SKIN: 0xf4e2d8,
   JIM_TATTOO: 0xcc1f2b,
   JIM_EYES: 0x4db8ff,
-  JIM_ROBE: 0x8b1a2a,
-  JIM_FUR: 0xe8d5a8,
+  JIM_SHIRT: 0xf5f0e8,
+  JIM_SHIRT_SPOT: 0x1a1a1a,
+  JIM_JACKET: 0x0d0d10,
 } as const
 
 // Depths (z-order)
