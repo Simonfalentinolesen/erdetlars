@@ -143,7 +143,7 @@ const subline = computed(() => SUBLINES[Math.min(countdown.value, SUBLINES.lengt
               </svg>
             </div>
             <div class="text-left leading-tight">
-              <p class="text-white text-xs font-heading font-bold">Jim Lyngvild præsenterer:</p>
+              <p class="text-white text-xs font-heading font-bold">Jim præsenterer:</p>
               <p class="text-muted text-[10px] font-body italic">3 minispil. 1 univers. 0 udgifter.</p>
             </div>
           </div>

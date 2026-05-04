@@ -3,7 +3,7 @@ import { DEPTH } from '../constants'
 import { TEX } from '../textures'
 
 /**
- * Jim Lyngvild — står i venstre side af skærmen som trickster.
+ * Jim — står i venstre side af skærmen som trickster.
  *
  * Han er ikke direkte gameplay-fjende; han laver "chaos events" der kort
  * forstyrrer spilleren: flashing lights, teasing speech-bubbles, peger på Lars.
